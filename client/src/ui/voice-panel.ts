@@ -5,6 +5,7 @@ export interface VoicePanel {
   setEnabled(enabled: boolean): void;
   addMedia(playerId: string, el: HTMLMediaElement, kind: "audio" | "video"): void;
   removeMedia(playerId: string, el: HTMLMediaElement): void;
+  removePlayer(playerId: string): void;
   setLocalVideo(el: HTMLVideoElement | undefined): void;
   onToggleMic(cb: (on: boolean) => Promise<void>): void;
   onToggleCamera(cb: (on: boolean) => Promise<void>): void;
@@ -71,7 +72,9 @@ export function createVoicePanel(): VoicePanel {
   document.body.append(root);
 
   let localVideo: HTMLVideoElement | undefined;
-  const key = (playerId: string) => `data-player-${playerId}`;
+  // One element per player and kind, so a repeated track event cannot stack tiles.
+  const media = new Map<string, HTMLMediaElement>();
+  const key = (playerId: string, kind: string) => `${playerId}:${kind}`;
 
   return {
     setEnabled(enabled) {
@@ -82,10 +85,12 @@ export function createVoicePanel(): VoicePanel {
         camera.setAttribute("aria-pressed", "false");
         videos.replaceChildren();
         audio.replaceChildren();
+        media.clear();
       }
     },
     addMedia(playerId, el, kind) {
-      el.setAttribute(key(playerId), "");
+      media.get(key(playerId, kind))?.remove();
+      media.set(key(playerId, kind), el);
       if (kind === "video") {
         el.setAttribute("aria-label", "Nearby player video");
         videos.append(el);
@@ -93,8 +98,17 @@ export function createVoicePanel(): VoicePanel {
         audio.append(el);
       }
     },
-    removeMedia(_playerId, el) {
+    removeMedia(playerId, el) {
       el.remove();
+      for (const kind of ["audio", "video"]) {
+        if (media.get(key(playerId, kind)) === el) media.delete(key(playerId, kind));
+      }
+    },
+    removePlayer(playerId) {
+      for (const kind of ["audio", "video"]) {
+        media.get(key(playerId, kind))?.remove();
+        media.delete(key(playerId, kind));
+      }
     },
     setLocalVideo(el) {
       localVideo?.remove();

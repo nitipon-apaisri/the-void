@@ -20,6 +20,8 @@ export interface VoiceConnection {
   /** An audio or video element for a nearby player became available. */
   onMedia(cb: (playerId: string, el: HTMLMediaElement, kind: "audio" | "video") => void): void;
   onMediaRemoved(cb: (playerId: string, el: HTMLMediaElement) => void): void;
+  /** A player left hearing range or the call; drop whatever UI is left for them. */
+  onPlayerGone(cb: (playerId: string) => void): void;
   /** Our own camera preview. */
   onLocalVideo(cb: (el: HTMLVideoElement | undefined) => void): void;
   onDisconnect(cb: () => void): void;
@@ -33,19 +35,22 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
   let leaving = false;
   let onMedia: Parameters<VoiceConnection["onMedia"]>[0] = () => {};
   let onMediaRemoved: Parameters<VoiceConnection["onMediaRemoved"]>[0] = () => {};
+  let onPlayerGone: Parameters<VoiceConnection["onPlayerGone"]>[0] = () => {};
   let onLocalVideo: Parameters<VoiceConnection["onLocalVideo"]>[0] = () => {};
 
   const applySubscriptions = () => {
     for (const participant of room.remoteParticipants.values()) {
       const want = nearby.has(participant.identity);
       for (const pub of participant.trackPublications.values()) {
-        if (pub.isSubscribed !== want) pub.setSubscribed(want);
+        // isDesired, not isSubscribed: the latter stays false while a request is pending.
+        if (pub.isDesired !== want) pub.setSubscribed(want);
       }
     }
   };
 
   room
     .on(RoomEvent.ParticipantConnected, applySubscriptions)
+    .on(RoomEvent.ParticipantDisconnected, (p) => onPlayerGone(p.identity))
     .on(RoomEvent.TrackPublished, applySubscriptions)
     .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
       if (track.kind !== Track.Kind.Audio && track.kind !== Track.Kind.Video) return;
@@ -72,6 +77,7 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
 
   return {
     setNearby(ids) {
+      for (const id of nearby) if (!ids.has(id)) onPlayerGone(id);
       nearby = ids;
       applySubscriptions();
     },
@@ -79,6 +85,7 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
     setCameraEnabled: async (on) => void (await room.localParticipant.setCameraEnabled(on)),
     onMedia: (cb) => (onMedia = cb),
     onMediaRemoved: (cb) => (onMediaRemoved = cb),
+    onPlayerGone: (cb) => (onPlayerGone = cb),
     onLocalVideo: (cb) => (onLocalVideo = cb),
     onDisconnect: (cb) =>
       room.on(RoomEvent.Disconnected, () => {

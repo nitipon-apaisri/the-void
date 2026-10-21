@@ -157,6 +157,7 @@ export class WorldScene extends Phaser.Scene {
       const voice = await connectVoice(await connection.requestVoiceToken());
       voice.onMedia((id, el, kind) => this.voicePanel.addMedia(id, el, kind));
       voice.onMediaRemoved((id, el) => this.voicePanel.removeMedia(id, el));
+      voice.onPlayerGone((id) => this.voicePanel.removePlayer(id));
       voice.onLocalVideo((el) => this.voicePanel.setLocalVideo(el));
       voice.onDisconnect(() => {
         this.voice = undefined;
