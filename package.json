@@ -1,0 +1,10 @@
+{
+  "name": "the-void",
+  "private": true,
+  "workspaces": ["client", "server", "desktop"],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "dev:desktop": "npm run dev -w desktop"
+  }
+}
