@@ -1,22 +1,37 @@
 // lib
-import { Room, type Client } from "@colyseus/core";
+import { Room, ServerError, type Client } from "@colyseus/core";
 
 // shared
-import { MAX_CLIENTS, MESSAGES, SPAWN, type JoinOptions } from "@void/shared";
+import { MAX_CLIENTS, MESSAGES, type JoinOptions } from "@void/shared";
 
+import type { UserRepository } from "../../repositories/user.repository.js";
+import type { AuthService } from "../../services/auth.service.js";
 import type { VoiceTokenService } from "../../services/voice-token.service.js";
-import { sanitizeAvatar, sanitizeName } from "./handlers/join.handler.js";
+import { resolveSpawn } from "./handlers/join.handler.js";
 import { parseMove } from "./handlers/move.handler.js";
 import { Player, VoidState } from "./void.state.js";
 
 interface VoidRoomOptions {
+  auth: AuthService;
+  users: UserRepository;
   voiceTokens?: VoiceTokenService;
+}
+
+/** What onAuth hands to onJoin and onLeave through `client.auth`. */
+interface Account {
+  userId: string;
+  name: string;
+  avatar: number;
+  lastX: number | null;
+  lastY: number | null;
 }
 
 export class VoidRoom extends Room<{ state: VoidState }> {
   maxClients = MAX_CLIENTS;
+  private options!: VoidRoomOptions;
 
   onCreate(options: VoidRoomOptions) {
+    this.options = options;
     this.setState(new VoidState());
     // Only joined players can ask, and the identity is their session id, never client-supplied.
     this.onMessage(MESSAGES.VOICE_TOKEN, async (client) => {
@@ -34,16 +49,40 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     });
   }
 
-  onJoin(client: Client, options: JoinOptions) {
+  // Who you are comes from the signed token, so a client cannot pick or spoof a name.
+  async onAuth(_client: Client, options: Partial<JoinOptions> | undefined): Promise<Account> {
+    const user = await this.options.auth.authenticate(options?.token);
+    if (!user) throw new ServerError(401, "not signed in");
+    return {
+      userId: user.id,
+      name: user.name,
+      avatar: user.avatar,
+      lastX: user.lastX,
+      lastY: user.lastY,
+    };
+  }
+
+  onJoin(client: Client<{ auth: Account }>) {
+    // onAuth always ran first; this only narrows the type.
+    if (!client.auth) throw new ServerError(401, "not signed in");
+    const { name, avatar, lastX, lastY } = client.auth;
     const player = new Player();
-    player.name = sanitizeName(options?.name);
-    player.avatar = sanitizeAvatar(options?.avatar);
-    player.x = SPAWN.x;
-    player.y = SPAWN.y;
+    player.name = name;
+    player.avatar = avatar;
+    const spawn = resolveSpawn(lastX, lastY);
+    player.x = spawn.x;
+    player.y = spawn.y;
     this.state.players.set(client.sessionId, player);
   }
 
-  onLeave(client: Client) {
+  async onLeave(client: Client<{ auth: Account }>) {
+    const player = this.state.players.get(client.sessionId);
     this.state.players.delete(client.sessionId);
+    if (!player || !client.auth) return;
+    try {
+      await this.options.users.savePosition(client.auth.userId, player.x, player.y);
+    } catch (err) {
+      console.error("could not save position", err instanceof Error ? err.message : err);
+    }
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { AVATAR_COLORS, MAX_NAME_LENGTH, WORLD_HEIGHT, WORLD_WIDTH } from "@void/shared";
+import { SPAWN, WORLD_HEIGHT, WORLD_WIDTH } from "@void/shared";
 
-import { sanitizeAvatar, sanitizeName } from "../handlers/join.handler.js";
+import { resolveSpawn } from "../handlers/join.handler.js";
 import { parseMove } from "../handlers/move.handler.js";
 
 describe("parseMove", () => {
@@ -28,26 +28,19 @@ describe("parseMove", () => {
   });
 });
 
-describe("sanitizeName", () => {
-  it("trims and caps length", () => {
-    expect(sanitizeName("  alice  ")).toBe("alice");
-    expect(sanitizeName("a".repeat(100))).toHaveLength(MAX_NAME_LENGTH);
+describe("resolveSpawn", () => {
+  it("returns the saved position when it is inside the world", () => {
+    expect(resolveSpawn(100, 200)).toEqual({ x: 100, y: 200 });
   });
 
-  it("falls back to guest", () => {
-    expect(sanitizeName(undefined)).toBe("guest");
-    expect(sanitizeName("   ")).toBe("guest");
-    expect(sanitizeName(42)).toBe("guest");
-  });
-});
-
-describe("sanitizeAvatar", () => {
-  it("keeps valid indexes", () => {
-    expect(sanitizeAvatar(0)).toBe(0);
-    expect(sanitizeAvatar(AVATAR_COLORS.length - 1)).toBe(AVATAR_COLORS.length - 1);
+  it("falls back to the default spawn without a saved position", () => {
+    expect(resolveSpawn(null, null)).toEqual({ x: SPAWN.x, y: SPAWN.y });
+    expect(resolveSpawn(100, null)).toEqual({ x: SPAWN.x, y: SPAWN.y });
   });
 
-  it.each([-1, AVATAR_COLORS.length, 1.5, "2", null, undefined, NaN])("falls back for %j", (v) => {
-    expect(sanitizeAvatar(v)).toBe(0);
+  it("falls back when the saved position is outside the world or not finite", () => {
+    expect(resolveSpawn(WORLD_WIDTH + 1, 0)).toEqual({ x: SPAWN.x, y: SPAWN.y });
+    expect(resolveSpawn(0, -5)).toEqual({ x: SPAWN.x, y: SPAWN.y });
+    expect(resolveSpawn(NaN, 0)).toEqual({ x: SPAWN.x, y: SPAWN.y });
   });
 });

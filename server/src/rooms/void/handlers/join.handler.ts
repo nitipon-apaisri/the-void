@@ -1,14 +1,22 @@
 // shared
-import { AVATAR_COLORS, MAX_NAME_LENGTH } from "@void/shared";
+import { SPAWN, WORLD_HEIGHT, WORLD_WIDTH, type Position } from "@void/shared";
 
-export function sanitizeName(raw: unknown): string {
-  if (typeof raw !== "string") return "guest";
-  const name = raw.trim().slice(0, MAX_NAME_LENGTH);
-  return name || "guest";
-}
-
-export function sanitizeAvatar(raw: unknown): number {
-  return Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) < AVATAR_COLORS.length
-    ? (raw as number)
-    : 0;
+/**
+ * Where a player appears: where they last stood if that is still inside the world,
+ * otherwise the default spawn. The saved value came from us, but the map may have changed.
+ */
+export function resolveSpawn(lastX: number | null, lastY: number | null): Position {
+  if (
+    typeof lastX === "number" &&
+    typeof lastY === "number" &&
+    Number.isFinite(lastX) &&
+    Number.isFinite(lastY) &&
+    lastX >= 0 &&
+    lastX <= WORLD_WIDTH &&
+    lastY >= 0 &&
+    lastY <= WORLD_HEIGHT
+  ) {
+    return { x: lastX, y: lastY };
+  }
+  return { x: SPAWN.x, y: SPAWN.y };
 }

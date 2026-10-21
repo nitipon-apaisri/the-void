@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      # Development only; production needs its own credentials and no published port.
+      POSTGRES_USER: void
+      POSTGRES_PASSWORD: void-dev-password
+      POSTGRES_DB: void
+    ports:
+      - "5433:5432" # 5433 so it does not clash with a Postgres already on 5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U void -d void"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   livekit:
     image: livekit/livekit-server:v1.9
     command: --config /etc/livekit.yaml
@@ -9,3 +27,6 @@ services:
       - "7882:7882/udp" # WebRTC over UDP (single port, simplest to open on a firewall)
     volumes:
       - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+
+volumes:
+  postgres-data:

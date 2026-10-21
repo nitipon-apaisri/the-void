@@ -65,10 +65,13 @@ server/src/
 ├── index.ts           # bootstrap only
 ├── config/            # env parsing
 ├── rooms/[room]/      # [room].room.ts, [room].state.ts (schema), handlers/, test/
+├── routes/            # Express HTTP endpoints (auth); thin, call services
 ├── services/          # livekit tokens, auth, persistence
 ├── repositories/      # Postgres queries (when added)
 ├── common/            # validation, logging helpers
 └── test/
+
+server/migrations/     # timestamped, re-runnable .sql files (npm run migrate -w server)
 
 desktop/src/
 ├── main.ts            # app lifecycle and window creation
@@ -126,6 +129,8 @@ Shared types → server room handler/state → server tests → client system (p
 
 - **Vulnerabilities** (`npm run audit:osv`, `npm audit`): try to upgrade the affected dependency, including a major bump of the parent package. Only if no fixed version exists, ignore it (documented in `osv-scanner.toml` with a reason) until one does. Never ignore a fixable advisory.
 - Never commit `.env`, credentials, private keys or tokens. Keep `.env.example` placeholders only.
+- Passwords are hashed with scrypt on the server and never logged or returned. `AUTH_SECRET` signs login tokens; the server refuses to start without it. Login and register are rate limited, and login gives the same error for a wrong password and an unknown email.
+- CORS is restricted to `CORS_ORIGINS` (it overrides Colyseus's reflect-any-origin default).
 - LiveKit API key/secret live on the server only. The client receives short-lived, room-scoped tokens.
 - Do not log tokens or full authorization headers.
 - Electron: `contextIsolation` on, `nodeIntegration` off, `sandbox` on. Restrict permission handlers to what is needed (media). Never load remote content in a window with a preload API.
@@ -136,7 +141,8 @@ Shared types → server room handler/state → server tests → client system (p
 Run from the repo root:
 
 ```bash
-docker compose up -d  # self-hosted LiveKit on :7880 (needs a .env copied from .env.example)
+docker compose up -d  # LiveKit on :7880 and Postgres on :5433 (needs a .env copied from .env.example)
+npm run migrate -w server  # apply database migrations
 npm run dev:server    # Colyseus on :2567
 npm run dev:client    # Vite on :5173
 npm run dev:desktop   # builds and launches Electron

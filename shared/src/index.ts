@@ -35,7 +35,44 @@ export interface Position {
 
 export type MovePayload = Position;
 
+// Accounts. Email and password live on the server; the client only ever holds a signed token.
+export const MIN_PASSWORD_LENGTH = 10;
+// scrypt cost grows with input size, so cap it to keep a login request cheap to reject.
+export const MAX_PASSWORD_LENGTH = 128;
+export const MAX_EMAIL_LENGTH = 254;
+
+export const AUTH_ROUTES = {
+  REGISTER: "/auth/register",
+  LOGIN: "/auth/login",
+  ME: "/auth/me",
+} as const;
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  avatar: number;
+}
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface RegisterPayload extends LoginPayload {
+  name: string;
+  avatar: number;
+}
+
+export interface AuthSession {
+  token: string;
+  user: UserProfile;
+}
+
+export interface ApiError {
+  error: string;
+}
+
+/** Colyseus join options. Identity comes from the token, never from a client-sent name. */
 export interface JoinOptions {
-  name?: string;
-  avatar?: number;
+  token: string;
 }
