@@ -13,9 +13,20 @@ export const SPAWN = { x: 10 * TILE_SIZE + TILE_SIZE / 2, y: 20 * TILE_SIZE + TI
 // Avatar choices; players send an index into this list.
 export const AVATAR_COLORS = [0x6ee7b7, 0x93c5fd, 0xfca5a5, 0xfcd34d, 0xc4b5fd, 0xf9a8d4] as const;
 
+// Players closer than this (in tiles) hear and see each other.
+export const PROXIMITY_TILES = 5;
+export const PROXIMITY_RADIUS = PROXIMITY_TILES * TILE_SIZE;
+
 export const MESSAGES = {
   MOVE: "move",
+  // Request/response: the room answers with a VoiceToken.
+  VOICE_TOKEN: "voice-token",
 } as const;
+
+export interface VoiceToken {
+  url: string;
+  token: string;
+}
 
 export interface Position {
   x: number;

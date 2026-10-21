@@ -1,0 +1,11 @@
+services:
+  livekit:
+    image: livekit/livekit-server:v1.9
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    ports:
+      - "7880:7880" # signalling (ws/http)
+      - "7881:7881" # WebRTC over TCP fallback
+      - "7882:7882/udp" # WebRTC over UDP (single port, simplest to open on a firewall)
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
