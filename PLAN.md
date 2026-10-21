@@ -1,0 +1,48 @@
+# PLAN.md
+
+Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app (macOS, Windows; Linux optional).
+
+## Architecture
+
+| Layer          | Choice                                   | Notes                                              |
+| -------------- | ---------------------------------------- | -------------------------------------------------- |
+| Client         | TypeScript, Vite, Phaser                 | Tiled (`.tmj`) maps                                |
+| Realtime state | Colyseus 0.16                            | One main room (max 100) plus rooms for private areas |
+| Voice / video  | LiveKit                                  | SFU; Cloud first, self-host later if cost matters  |
+| Auth           | Magic link or OAuth                      | Provider TBD                                       |
+| DB             | Postgres                                 | Users, spaces, permissions                         |
+| Desktop        | Electron                                 | Chosen over Tauri for consistent WebRTC and WebGL  |
+| Deploy         | Docker Compose on a VPS                  | Colyseus, LiveKit (if self-hosted), Postgres, proxy |
+
+## Design rules for 100 users
+
+- Proximity video: subscribe only to players within ~5 tiles; unsubscribe on leave. Never full mesh.
+- Position sync at ~10–15 Hz; client interpolates.
+- Interest management: send each client only nearby players once the room grows.
+- Cap video tiles per user in crowded areas.
+
+## Status
+
+- [x] Monorepo scaffold: `client/`, `server/`, `desktop/`
+- [x] Colyseus room syncing name and position
+- [x] Phaser client with movement and other players as dots
+- [x] Electron shell loading the client
+- [ ] Verified end to end with two clients
+
+## Roadmap
+
+1. **World**: Tiled map with collisions, name prompt, avatar choice.
+2. **Proximity A/V**: LiveKit token endpoint on the server, distance-based subscribe, mute and camera controls.
+3. **Accounts**: auth, Postgres, persisted name, avatar and last position.
+4. **Space features**: private rooms (door tiles), chat, emotes, screen share.
+5. **Admin**: roles, map editing workflow, room permissions.
+6. **Desktop polish**: preload script, tray, notifications, global push-to-talk, deep links (`thevoid://join/...`), screen-source picker.
+7. **Packaging**: electron-builder for macOS `.dmg` and Windows `.exe` (AppImage optional); macOS signing and notarization (Apple Developer account); Windows code signing; auto-update.
+8. **Load test**: 100 simulated bots before real users.
+
+## Open decisions
+
+- LiveKit Cloud or self-hosted
+- Auth provider
+- Art: free pixel tilesets or custom assets
+- Hosting provider
