@@ -1,3 +1,6 @@
+// utils
+import { injectStyle } from "../utils/dom";
+
 export type ToastKind = "info" | "success" | "error";
 
 export interface Toast {
@@ -24,12 +27,7 @@ const STYLES = `
 `;
 
 export function createToast(): Toast {
-  if (!document.getElementById(STYLE_ID)) {
-    const style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = STYLES;
-    document.head.append(style);
-  }
+  injectStyle(STYLE_ID, STYLES);
 
   const el = document.createElement("div");
   el.className = "void-toast";

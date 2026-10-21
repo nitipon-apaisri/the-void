@@ -147,6 +147,7 @@ Typecheck a package with `npx tsc -p .` inside it; `npm run build -w client` bui
 npm run lint          # oxlint
 npm run format        # prettier --write
 npm run format:check  # prettier --check
+npm run assets        # regenerate placeholder tileset.png and office.tmj
 npm run audit:osv     # osv-scanner on package-lock.json (also runs on pre-push)
 ```
 

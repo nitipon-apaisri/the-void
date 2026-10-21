@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "audit:osv": "osv-scanner scan source --lockfile=package-lock.json",
     "test": "vitest run",
-    "typecheck": "tsc -p shared --noEmit && tsc -p client --noEmit && tsc -p server --noEmit && tsc -p desktop --noEmit"
+    "typecheck": "tsc -p shared --noEmit && tsc -p client --noEmit && tsc -p server --noEmit && tsc -p desktop --noEmit",
+    "assets": "node scripts/generate-assets.mjs"
   },
   "devDependencies": {
     "husky": "^9.1.7",

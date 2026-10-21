@@ -7,6 +7,7 @@ import { MESSAGES, ROOM_NAME, type JoinOptions, type Position } from "@void/shar
 export interface PlayerSnapshot extends Position {
   id: string;
   name: string;
+  avatar: number;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -30,7 +31,13 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
   const $ = getStateCallbacks(room);
   const players = $(room.state as any).players;
   let leaving = false;
-  const snapshot = (p: any, id: string): PlayerSnapshot => ({ id, name: p.name, x: p.x, y: p.y });
+  const snapshot = (p: any, id: string): PlayerSnapshot => ({
+    id,
+    name: p.name,
+    avatar: p.avatar,
+    x: p.x,
+    y: p.y,
+  });
 
   return {
     sessionId: room.sessionId,
