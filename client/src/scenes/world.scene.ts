@@ -2,10 +2,11 @@
 import Phaser from "phaser";
 
 // shared
-import { PROXIMITY_RADIUS, SPAWN, type JoinOptions } from "@void/shared";
+import { PROXIMITY_RADIUS, SPAWN, type AuthSession } from "@void/shared";
 
 // config
 import {
+  API_URL,
   CONNECT_RETRY_MS,
   PROXIMITY_CHECK_MS,
   MOVE_SEND_INTERVAL_MS,
@@ -16,8 +17,9 @@ import {
 } from "../config/env";
 
 // net
+import { createAuthClient } from "../net/auth-client";
 import { connectVoice, type VoiceConnection } from "../net/voice-connection";
-import { connectToVoid, type VoidConnection } from "../net/void-connection";
+import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
 
 // systems
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
@@ -28,9 +30,13 @@ import { nearbyIds } from "../systems/proximity";
 import { PlayerSprite } from "../objects/player";
 
 // ui
-import { promptProfile } from "../ui/join-form";
+import { createAccountBar, type AccountBar } from "../ui/account-bar";
+import { promptAuth } from "../ui/auth-form";
 import { createToast, type Toast } from "../ui/toast";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
+
+// utils
+import { clearSession, loadSession, saveSession } from "../utils/session";
 
 import mapUrl from "../assets/maps/office.tmj?url";
 import tilesUrl from "../assets/maps/tileset.png";
@@ -45,7 +51,9 @@ export class WorldScene extends Phaser.Scene {
   private nearby: ReadonlySet<string> = new Set();
   private lastProximity = 0;
   private grid!: CollisionGrid;
-  private profile?: Required<JoinOptions>;
+  private readonly auth = createAuthClient(API_URL);
+  private session?: AuthSession;
+  private accountBar?: AccountBar;
   private me?: PlayerSprite;
   private others = new Map<string, PlayerSprite>();
   private keys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -89,6 +97,7 @@ export class WorldScene extends Phaser.Scene {
       void this.connection?.leave();
       this.toast.destroy();
       this.voicePanel.destroy();
+      this.accountBar?.destroy();
     });
     void this.enter();
   }
@@ -96,20 +105,53 @@ export class WorldScene extends Phaser.Scene {
   private async enter() {
     // The form's text input must receive arrow keys, so pause game input while it is open.
     this.input.keyboard!.enabled = false;
-    this.profile = await promptProfile();
+    const session = await this.signIn();
+    this.session = session;
     this.input.keyboard!.enabled = true;
+    this.accountBar = createAccountBar(session.user.name, () => this.signOut());
 
-    this.me = new PlayerSprite(this, SPAWN.x, SPAWN.y, this.profile.name, this.profile.avatar);
+    this.me = new PlayerSprite(this, SPAWN.x, SPAWN.y, session.user.name, session.user.avatar);
     this.cameras.main.startFollow(this.me, true, 0.15, 0.15);
     void this.connect();
   }
 
+  // A saved session is reused; if the server cannot be reached we trust it and play offline.
+  private async signIn(): Promise<AuthSession> {
+    const saved = loadSession();
+    if (saved) {
+      try {
+        const user = await this.auth.me(saved.token);
+        if (user) return this.remember({ token: saved.token, user });
+      } catch {
+        // Unreachable or erroring server is not proof the token is bad.
+        return saved;
+      }
+      clearSession();
+    }
+    return promptAuth(async (mode, fields) =>
+      this.remember(
+        mode === "register" ? await this.auth.register(fields) : await this.auth.login(fields),
+      ),
+    );
+  }
+
+  private remember(session: AuthSession): AuthSession {
+    saveSession(session);
+    return session;
+  }
+
+  // A reload is the simplest way to drop every sprite, connection and call at once.
+  private signOut() {
+    clearSession();
+    window.location.reload();
+  }
+
   // Movement works offline; the connection only adds other players and sync.
   private async connect() {
-    if (this.connecting || !this.profile) return;
+    if (this.connecting || !this.session) return;
     this.connecting = true;
     try {
-      const connection = await connectToVoid(SERVER_URL, this.profile);
+      const connection = await connectToVoid(SERVER_URL, { token: this.session.token });
       this.connection = connection;
       this.unsent = true;
       if (this.wasOffline) this.toast.show("Back online", "success", 2500);
@@ -142,6 +184,11 @@ export class WorldScene extends Phaser.Scene {
         this.time.delayedCall(CONNECT_RETRY_MS, () => void this.connect());
       });
     } catch (err) {
+      if (err instanceof NotSignedInError) {
+        // Expired or revoked: sign in again rather than retrying with the same token.
+        this.signOut();
+        return;
+      }
       console.error("could not connect to", SERVER_URL, err);
       this.wasOffline = true;
       this.toast.show("Can't reach the server. Retrying…", "error");

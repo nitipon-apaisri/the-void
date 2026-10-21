@@ -34,8 +34,14 @@ export interface VoidConnection {
   leave(): Promise<void>;
 }
 
+/** Thrown by connectToVoid when the server rejected our token. */
+export class NotSignedInError extends Error {}
+
 export async function connectToVoid(url: string, options: JoinOptions): Promise<VoidConnection> {
-  const room = await new Client(url).joinOrCreate(ROOM_NAME, options);
+  const room = await new Client(url).joinOrCreate(ROOM_NAME, options).catch((err) => {
+    if ((err as { code?: number }).code === 401) throw new NotSignedInError("not signed in");
+    throw err;
+  });
   const $ = getStateCallbacks(room);
   const players = $(room.state as any).players;
   let leaving = false;
