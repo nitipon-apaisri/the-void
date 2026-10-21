@@ -5,3 +5,4 @@ export const PLAYER_RADIUS = 12;
 // ~12 Hz position updates; remote players tween over REMOTE_TWEEN_MS to smooth them.
 export const MOVE_SEND_INTERVAL_MS = 80;
 export const REMOTE_TWEEN_MS = 100;
+export const CONNECT_RETRY_MS = 3000;
