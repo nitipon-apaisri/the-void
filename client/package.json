@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.5",
-    "phaser": "^4.2.1",
-    "@void/shared": "*"
+    "@void/shared": "*",
+    "livekit-client": "^2.23.0",
+    "phaser": "^4.2.1"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

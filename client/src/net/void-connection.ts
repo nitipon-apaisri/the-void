@@ -2,7 +2,13 @@
 import { Client, getStateCallbacks } from "@colyseus/sdk";
 
 // shared
-import { MESSAGES, ROOM_NAME, type JoinOptions, type Position } from "@void/shared";
+import {
+  MESSAGES,
+  ROOM_NAME,
+  type JoinOptions,
+  type Position,
+  type VoiceToken,
+} from "@void/shared";
 
 export interface PlayerSnapshot extends Position {
   id: string;
@@ -14,6 +20,8 @@ export interface PlayerSnapshot extends Position {
 export interface VoidConnection {
   sessionId: string;
   sendMove(pos: Position): void;
+  /** Rejects when the server has no LiveKit configured. */
+  requestVoiceToken(): Promise<VoiceToken>;
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
   onPlayerMove(cb: (player: PlayerSnapshot) => void): void;
   onPlayerRemove(cb: (id: string) => void): void;
@@ -42,6 +50,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
   return {
     sessionId: room.sessionId,
     sendMove: (pos) => room.send(MESSAGES.MOVE, pos),
+    requestVoiceToken: () => room.request(MESSAGES.VOICE_TOKEN),
     onPlayerAdd: (cb) => players.onAdd((p: any, id: string) => cb(snapshot(p, id))),
     onPlayerMove: (cb) =>
       players.onAdd((p: any, id: string) => $(p).onChange(() => cb(snapshot(p, id)))),

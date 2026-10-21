@@ -9,7 +9,7 @@ The Void is a self-built 2D virtual workspace (Gather-style) for ~100 users, shi
 | Package    | Stack                               | Role                                                  |
 | ---------- | ----------------------------------- | ----------------------------------------------------- |
 | `client/`  | Vite, TypeScript, Phaser            | Game world and UI; must also run in a browser         |
-| `server/`  | Colyseus 0.18, `@colyseus/schema` 5 | Authoritative realtime state                          |
+| `server/`  | Colyseus 0.18, `@colyseus/schema` 5 | Authoritative realtime state, LiveKit token issuing   |
 | `desktop/` | Electron, TypeScript (CommonJS)     | Native shell that loads the client                    |
 | `shared/`  | TypeScript (`@void/shared`)         | Message types and constants used by client and server |
 
@@ -136,6 +136,7 @@ Shared types → server room handler/state → server tests → client system (p
 Run from the repo root:
 
 ```bash
+docker compose up -d  # self-hosted LiveKit on :7880 (needs a .env copied from .env.example)
 npm run dev:server    # Colyseus on :2567
 npm run dev:client    # Vite on :5173
 npm run dev:desktop   # builds and launches Electron
