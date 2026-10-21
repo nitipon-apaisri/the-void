@@ -11,7 +11,7 @@ export class VoidState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
 }
 
-export class VoidRoom extends Room<VoidState> {
+export class VoidRoom extends Room<{ state: VoidState }> {
   maxClients = 100;
 
   onCreate() {

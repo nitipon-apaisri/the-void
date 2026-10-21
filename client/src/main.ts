@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { Client, Room } from "colyseus.js";
+import { Client, Room, getStateCallbacks } from "@colyseus/sdk";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? "ws://localhost:2567";
 const SPEED = 180;
@@ -18,14 +18,14 @@ class WorldScene extends Phaser.Scene {
     const client = new Client(SERVER_URL);
     this.room = await client.joinOrCreate("void", { name: "guest" });
 
-    const players = (this.room.state as any).players;
-    players.onAdd((p: any, id: string) => {
+    const $ = getStateCallbacks(this.room);
+    $(this.room.state).players.onAdd((p: any, id: string) => {
       if (id === this.room.sessionId) return;
       const dot = this.add.circle(p.x, p.y, 12, 0x93c5fd);
       this.others.set(id, dot);
-      p.onChange(() => this.tweens.add({ targets: dot, x: p.x, y: p.y, duration: 100 }));
+      $(p).onChange(() => this.tweens.add({ targets: dot, x: p.x, y: p.y, duration: 100 }));
     });
-    players.onRemove((_: any, id: string) => {
+    $(this.room.state).players.onRemove((_: any, id: string) => {
       this.others.get(id)?.destroy();
       this.others.delete(id);
     });

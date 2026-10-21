@@ -4,15 +4,15 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 
 ## Architecture
 
-| Layer          | Choice                                   | Notes                                              |
-| -------------- | ---------------------------------------- | -------------------------------------------------- |
-| Client         | TypeScript, Vite, Phaser                 | Tiled (`.tmj`) maps                                |
-| Realtime state | Colyseus 0.16                            | One main room (max 100) plus rooms for private areas |
-| Voice / video  | LiveKit                                  | SFU; Cloud first, self-host later if cost matters  |
-| Auth           | Magic link or OAuth                      | Provider TBD                                       |
-| DB             | Postgres                                 | Users, spaces, permissions                         |
-| Desktop        | Electron                                 | Chosen over Tauri for consistent WebRTC and WebGL  |
-| Deploy         | Docker Compose on a VPS                  | Colyseus, LiveKit (if self-hosted), Postgres, proxy |
+| Layer          | Choice                   | Notes                                                |
+| -------------- | ------------------------ | ---------------------------------------------------- |
+| Client         | TypeScript, Vite, Phaser | Tiled (`.tmj`) maps                                  |
+| Realtime state | Colyseus 0.18            | One main room (max 100) plus rooms for private areas |
+| Voice / video  | LiveKit                  | SFU; Cloud first, self-host later if cost matters    |
+| Auth           | Magic link or OAuth      | Provider TBD                                         |
+| DB             | Postgres                 | Users, spaces, permissions                           |
+| Desktop        | Electron                 | Chosen over Tauri for consistent WebRTC and WebGL    |
+| Deploy         | Docker Compose on a VPS  | Colyseus, LiveKit (if self-hosted), Postgres, proxy  |
 
 ## Design rules for 100 users
 
@@ -31,6 +31,7 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 
 ## Roadmap
 
+0. **Foundations**: restructure to the layout in `AGENTS.md`; add Oxlint, Prettier, Vitest, `typecheck` script, Husky and lint-staged; add `.env.example`.
 1. **World**: Tiled map with collisions, name prompt, avatar choice.
 2. **Proximity A/V**: LiveKit token endpoint on the server, distance-based subscribe, mute and camera controls.
 3. **Accounts**: auth, Postgres, persisted name, avatar and last position.
