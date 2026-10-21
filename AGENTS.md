@@ -11,7 +11,7 @@ The Void is a self-built 2D virtual workspace (Gather-style) for ~100 users, shi
 | `client/`  | Vite, TypeScript, Phaser            | Game world and UI; must also run in a browser         |
 | `server/`  | Colyseus 0.18, `@colyseus/schema` 5 | Authoritative realtime state                          |
 | `desktop/` | Electron, TypeScript (CommonJS)     | Native shell that loads the client                    |
-| `shared/`  | TypeScript (not created yet)        | Message types and constants used by client and server |
+| `shared/`  | TypeScript (`@void/shared`)         | Message types and constants used by client and server |
 
 ## Gitmoji commits
 
@@ -77,7 +77,7 @@ desktop/src/
 ├── windows/
 └── test/
 
-shared/src/            # message names, payload types, constants (create when first needed)
+shared/src/            # message names, payload types, constants (imported as @void/shared)
 ```
 
 - **Scenes** stay thin: create objects, call systems, forward input. Rules live in `systems/`.
@@ -85,7 +85,7 @@ shared/src/            # message names, payload types, constants (create when fi
 - **`net/`** is the only place that imports `@colyseus/sdk` or LiveKit. Scenes call it through a small interface.
 - **Rooms** own authoritative state and message handlers; **services** own side effects; **repositories** own DB queries.
 - **Electron**: the renderer never gets Node access. Anything it needs goes through `preload.ts` with a typed, minimal API.
-- **Shared contract**: message names and payload types are defined once in `shared/` (or in one file in `server/` until `shared/` exists) and imported by both sides. Never duplicate string literals like `"move"`.
+- **Shared contract**: message names and payload types are defined once in `shared/` and imported by both sides. Never duplicate string literals like `"move"`.
 - Keep `main.ts` / `index.ts` to bootstrap only.
 
 ## Code quality
@@ -152,4 +152,7 @@ npm run audit:osv     # osv-scanner on package-lock.json (also runs on pre-push)
 
 Husky: `pre-commit` → lint-staged (Prettier + Oxlint on staged files); `pre-push` → `npm run audit:osv` (needs `osv-scanner` installed, e.g. `brew install osv-scanner`).
 
-Planned (not installed yet): `test` (Vitest) and `typecheck` (all packages).
+```bash
+npm run typecheck     # tsc --noEmit for shared, client, server, desktop
+npm test              # vitest run (only when asked, see Tests)
+```

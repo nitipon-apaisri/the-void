@@ -27,11 +27,12 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 - [x] Colyseus room syncing name and position
 - [x] Phaser client with movement and other players as dots
 - [x] Electron shell loading the client
-- [ ] Verified end to end with two clients
+- [x] Server verified with two SDK clients (join, move, invalid input, leave)
+- [ ] Verified in the Phaser window and Electron shell
 
 ## Roadmap
 
-0. **Foundations**: restructure to the layout in `AGENTS.md`; add Oxlint, Prettier, Vitest, `typecheck` script, Husky and lint-staged; add `.env.example`.
+0. **Foundations** (done): layout from `AGENTS.md`, `@void/shared` contract, Oxlint, Prettier, Vitest, `typecheck`, Husky, `.env.example`.
 1. **World**: Tiled map with collisions, name prompt, avatar choice.
 2. **Proximity A/V**: LiveKit token endpoint on the server, distance-based subscribe, mute and camera controls.
 3. **Accounts**: auth, Postgres, persisted name, avatar and last position.
