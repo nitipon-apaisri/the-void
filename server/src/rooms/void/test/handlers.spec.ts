@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MAX_COORDINATE, MAX_NAME_LENGTH } from "@void/shared";
+import { AVATAR_COLORS, MAX_NAME_LENGTH, WORLD_HEIGHT, WORLD_WIDTH } from "@void/shared";
 
-import { sanitizeName } from "../handlers/join.handler.js";
+import { sanitizeAvatar, sanitizeName } from "../handlers/join.handler.js";
 import { parseMove } from "../handlers/move.handler.js";
 
 describe("parseMove", () => {
   it("accepts finite in-range coordinates", () => {
-    expect(parseMove({ x: 10, y: -20 })).toEqual({ x: 10, y: -20 });
+    expect(parseMove({ x: 10, y: 20 })).toEqual({ x: 10, y: 20 });
   });
 
   it("drops extra fields", () => {
@@ -20,9 +20,11 @@ describe("parseMove", () => {
     },
   );
 
-  it("rejects infinity and out-of-range values", () => {
+  it("rejects infinity and positions outside the world", () => {
     expect(parseMove({ x: Infinity, y: 0 })).toBeNull();
-    expect(parseMove({ x: MAX_COORDINATE + 1, y: 0 })).toBeNull();
+    expect(parseMove({ x: -1, y: 0 })).toBeNull();
+    expect(parseMove({ x: WORLD_WIDTH + 1, y: 0 })).toBeNull();
+    expect(parseMove({ x: 0, y: WORLD_HEIGHT + 1 })).toBeNull();
   });
 });
 
@@ -36,5 +38,16 @@ describe("sanitizeName", () => {
     expect(sanitizeName(undefined)).toBe("guest");
     expect(sanitizeName("   ")).toBe("guest");
     expect(sanitizeName(42)).toBe("guest");
+  });
+});
+
+describe("sanitizeAvatar", () => {
+  it("keeps valid indexes", () => {
+    expect(sanitizeAvatar(0)).toBe(0);
+    expect(sanitizeAvatar(AVATAR_COLORS.length - 1)).toBe(AVATAR_COLORS.length - 1);
+  });
+
+  it.each([-1, AVATAR_COLORS.length, 1.5, "2", null, undefined, NaN])("falls back for %j", (v) => {
+    expect(sanitizeAvatar(v)).toBe(0);
   });
 });
