@@ -69,8 +69,14 @@ export function createVoicePanel(): VoicePanel {
         await run(next);
         button.setAttribute("aria-pressed", String(next));
       } catch (err) {
-        // Permission denied or no device: stay off and say why in the console.
-        console.error(`${label} failed`, err);
+        // Cancelling a picker is a choice, not a failure. Anything else: say why in the console.
+        if (!(
+          err instanceof DOMException &&
+          err.name === "NotAllowedError" &&
+          label === "Share screen"
+        )) {
+          console.error(`${label} failed`, err);
+        }
       } finally {
         button.disabled = false;
       }

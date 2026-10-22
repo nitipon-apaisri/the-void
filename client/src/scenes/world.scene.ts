@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 
 // shared
-import { SPAWN, type AuthSession } from "@void/shared";
+import { SPAWN, type AuthSession, type DesktopBridge } from "@void/shared";
 
 // config
 import {
@@ -33,10 +33,12 @@ import { PlayerSprite } from "../objects/player";
 // ui
 import { createAccountBar, type AccountBar } from "../ui/account-bar";
 import { promptAuth } from "../ui/auth-form";
+import { chooseScreenSource } from "../ui/screen-picker";
 import { createToast, type Toast } from "../ui/toast";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
+import { desktopBridge } from "../utils/desktop-bridge";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 
 import mapUrl from "../assets/maps/office.tmj?url";
@@ -94,6 +96,9 @@ export class WorldScene extends Phaser.Scene {
       await this.voice?.setCameraEnabled(on);
     });
     this.voicePanel.onToggleScreen(async (on) => {
+      // The desktop shell has no built-in picker, so ours runs first. Browsers use their own.
+      const bridge = desktopBridge();
+      if (on && bridge) await this.pickScreen(bridge);
       await this.voice?.setScreenShareEnabled(on);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -221,6 +226,16 @@ export class WorldScene extends Phaser.Scene {
       this.voicePanel.setEnabled(true);
     } catch (err) {
       console.warn("voice unavailable", err);
+    }
+  }
+
+  // Arrow keys belong to the picker while it is open, not to the avatar.
+  private async pickScreen(bridge: DesktopBridge) {
+    this.input.keyboard!.enabled = false;
+    try {
+      await chooseScreenSource(bridge);
+    } finally {
+      this.input.keyboard!.enabled = true;
     }
   }
 

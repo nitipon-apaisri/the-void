@@ -148,7 +148,7 @@ npm run dev:client    # Vite on :5173
 npm run dev:desktop   # builds and launches Electron
 ```
 
-Typecheck a package with `npx tsc -p .` inside it; `npm run build -w client` builds the client.
+Desktop is bundled with esbuild (so `@void/shared` is inlined, including into the sandboxed preload); `tsc` only typechecks it. Typecheck a package with `npx tsc -p .` inside it; `npm run build -w client` builds the client.
 
 ```bash
 npm run lint          # oxlint

@@ -76,3 +76,32 @@ export interface ApiError {
 export interface JoinOptions {
   token: string;
 }
+
+// Desktop shell bridge. The Electron preload exposes DesktopBridge as `window.voidDesktop`;
+// the browser build has no such object, so the client must treat it as optional.
+export const DESKTOP_IPC = {
+  LIST_SCREENS: "screen:list",
+  SELECT_SCREEN: "screen:select",
+  OPEN_SCREEN_SETTINGS: "screen:open-settings",
+} as const;
+
+export interface ScreenSource {
+  id: string;
+  name: string;
+  kind: "screen" | "window";
+  /** PNG data URL. */
+  thumbnail: string;
+}
+
+export interface ScreenSourceList {
+  sources: ScreenSource[];
+  /** macOS blocks capture until Screen Recording is allowed in System Settings. */
+  needsPermission: boolean;
+}
+
+export interface DesktopBridge {
+  listScreenSources(): Promise<ScreenSourceList>;
+  /** Must be called with an id from the latest list, right before getDisplayMedia. */
+  selectScreenSource(id: string): Promise<void>;
+  openScreenSettings(): Promise<void>;
+}
