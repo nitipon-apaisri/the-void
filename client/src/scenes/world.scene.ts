@@ -24,7 +24,7 @@ import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/voi
 // systems
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { stepPosition } from "../systems/movement";
-import { nearbyIds } from "../systems/proximity";
+import { nearbyIds, sortByDistance } from "../systems/proximity";
 
 // objects
 import { PlayerSprite } from "../objects/player";
@@ -91,6 +91,9 @@ export class WorldScene extends Phaser.Scene {
     });
     this.voicePanel.onToggleCamera(async (on) => {
       await this.voice?.setCameraEnabled(on);
+    });
+    this.voicePanel.onToggleScreen(async (on) => {
+      await this.voice?.setScreenShareEnabled(on);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       void this.stopVoice();
@@ -206,6 +209,7 @@ export class WorldScene extends Phaser.Scene {
       voice.onMediaRemoved((id, el) => this.voicePanel.removeMedia(id, el));
       voice.onPlayerGone((id) => this.voicePanel.removePlayer(id));
       voice.onLocalVideo((el) => this.voicePanel.setLocalVideo(el));
+      voice.onLocalScreen((on) => this.voicePanel.setScreenSharing(on));
       voice.onDisconnect(() => {
         this.voice = undefined;
         this.voicePanel.setEnabled(false);
@@ -230,7 +234,7 @@ export class WorldScene extends Phaser.Scene {
   private updateProximity(me: PlayerSprite) {
     const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
     this.nearby = nearbyIds(me, others, PROXIMITY_RADIUS, this.nearby);
-    this.voice?.setNearby(this.nearby);
+    this.voice?.setNearby(sortByDistance(me, others, this.nearby));
   }
 
   private removeOther(id: string) {

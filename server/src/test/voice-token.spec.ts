@@ -26,6 +26,9 @@ describe("createVoiceTokenService", () => {
     expect(claims.name).toBe("Ada");
     expect(claims.video).toMatchObject({ room: "void", roomJoin: true, canPublish: true });
     expect(claims.video.roomAdmin).toBeUndefined();
+    expect(claims.video.canPublishData).toBe(false);
+    expect(claims.video.canPublishSources).toHaveLength(3);
+    expect(claims.video.canPublishSources).toContain("screen_share");
     expect(claims.exp - claims.nbf).toBeLessThanOrEqual(600);
   });
 });

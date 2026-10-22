@@ -1,14 +1,20 @@
+// net
+import type { MediaKind } from "../net/voice-connection";
+
 // utils
 import { injectStyle } from "../utils/dom";
 
 export interface VoicePanel {
   setEnabled(enabled: boolean): void;
-  addMedia(playerId: string, el: HTMLMediaElement, kind: "audio" | "video"): void;
+  addMedia(playerId: string, el: HTMLMediaElement, kind: MediaKind): void;
   removeMedia(playerId: string, el: HTMLMediaElement): void;
   removePlayer(playerId: string): void;
   setLocalVideo(el: HTMLVideoElement | undefined): void;
   onToggleMic(cb: (on: boolean) => Promise<void>): void;
   onToggleCamera(cb: (on: boolean) => Promise<void>): void;
+  onToggleScreen(cb: (on: boolean) => Promise<void>): void;
+  /** Syncs the button when sharing starts or stops outside it (e.g. the browser's stop button). */
+  setScreenSharing(on: boolean): void;
   destroy(): void;
 }
 
@@ -19,6 +25,9 @@ const STYLES = `
 .void-voice__videos { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
 .void-voice__videos video { width: 160px; height: 120px; object-fit: cover; border-radius: 8px;
   background: #111827; border: 1px solid #374151; }
+.void-voice__screens { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
+.void-voice__screens video { width: min(480px, 90vw); aspect-ratio: 16 / 9; object-fit: contain;
+  border-radius: 8px; background: #000; border: 1px solid #374151; }
 .void-voice__controls { display: flex; gap: 8px; }
 .void-voice button { padding: 8px 14px; border-radius: 8px; border: 1px solid #374151;
   background: #1f2937; color: #f9fafb; cursor: pointer; font: inherit; }
@@ -32,6 +41,8 @@ export function createVoicePanel(): VoicePanel {
 
   const root = document.createElement("div");
   root.className = "void-voice";
+  const screens = document.createElement("div");
+  screens.className = "void-voice__screens";
   const videos = document.createElement("div");
   videos.className = "void-voice__videos";
   // Hidden from layout; audio elements only need to be in the document to play reliably.
@@ -39,10 +50,11 @@ export function createVoicePanel(): VoicePanel {
   audio.hidden = true;
   const controls = document.createElement("div");
   controls.className = "void-voice__controls";
-  root.append(videos, audio, controls);
+  root.append(screens, videos, audio, controls);
 
   let toggleMic: (on: boolean) => Promise<void> = async () => {};
   let toggleCamera: (on: boolean) => Promise<void> = async () => {};
+  let toggleScreen: (on: boolean) => Promise<void> = async () => {};
 
   const makeToggle = (label: string, run: (on: boolean) => Promise<void>) => {
     const button = document.createElement("button");
@@ -68,7 +80,8 @@ export function createVoicePanel(): VoicePanel {
 
   const mic = makeToggle("Mic", (on) => toggleMic(on));
   const camera = makeToggle("Camera", (on) => toggleCamera(on));
-  controls.append(mic, camera);
+  const screen = makeToggle("Share screen", (on) => toggleScreen(on));
+  controls.append(mic, camera, screen);
   document.body.append(root);
 
   let localVideo: HTMLVideoElement | undefined;
@@ -80,9 +93,12 @@ export function createVoicePanel(): VoicePanel {
     setEnabled(enabled) {
       mic.disabled = !enabled;
       camera.disabled = !enabled;
+      screen.disabled = !enabled;
       if (!enabled) {
         mic.setAttribute("aria-pressed", "false");
         camera.setAttribute("aria-pressed", "false");
+        screen.setAttribute("aria-pressed", "false");
+        screens.replaceChildren();
         videos.replaceChildren();
         audio.replaceChildren();
         media.clear();
@@ -91,7 +107,10 @@ export function createVoicePanel(): VoicePanel {
     addMedia(playerId, el, kind) {
       media.get(key(playerId, kind))?.remove();
       media.set(key(playerId, kind), el);
-      if (kind === "video") {
+      if (kind === "screen") {
+        el.setAttribute("aria-label", "Nearby player's shared screen");
+        screens.append(el);
+      } else if (kind === "video") {
         el.setAttribute("aria-label", "Nearby player video");
         videos.append(el);
       } else {
@@ -100,12 +119,12 @@ export function createVoicePanel(): VoicePanel {
     },
     removeMedia(playerId, el) {
       el.remove();
-      for (const kind of ["audio", "video"]) {
+      for (const kind of ["audio", "video", "screen"]) {
         if (media.get(key(playerId, kind)) === el) media.delete(key(playerId, kind));
       }
     },
     removePlayer(playerId) {
-      for (const kind of ["audio", "video"]) {
+      for (const kind of ["audio", "video", "screen"]) {
         media.get(key(playerId, kind))?.remove();
         media.delete(key(playerId, kind));
       }
@@ -120,6 +139,8 @@ export function createVoicePanel(): VoicePanel {
     },
     onToggleMic: (cb) => (toggleMic = cb),
     onToggleCamera: (cb) => (toggleCamera = cb),
+    onToggleScreen: (cb) => (toggleScreen = cb),
+    setScreenSharing: (on) => screen.setAttribute("aria-pressed", String(on)),
     destroy: () => root.remove(),
   };
 }

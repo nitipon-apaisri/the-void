@@ -1,5 +1,5 @@
 // lib
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, TrackSource } from "livekit-server-sdk";
 
 // shared
 import { ROOM_NAME, type VoiceToken } from "@void/shared";
@@ -35,6 +35,8 @@ export function createVoiceTokenService(config: VoiceTokenConfig): VoiceTokenSer
         canPublish: true,
         canSubscribe: true,
         canPublishData: false,
+        // Mic, camera and screen only; a modified client cannot publish anything else.
+        canPublishSources: [TrackSource.MICROPHONE, TrackSource.CAMERA, TrackSource.SCREEN_SHARE],
       });
       return { url: config.url, token: await token.toJwt() };
     },

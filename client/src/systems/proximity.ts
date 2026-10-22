@@ -22,3 +22,16 @@ export function nearbyIds(
   }
   return result;
 }
+
+/** The ids in `ids`, nearest to `me` first. Ids with no known position are dropped. */
+export function sortByDistance(
+  me: { x: number; y: number },
+  others: Iterable<Positioned>,
+  ids: ReadonlySet<string>,
+): string[] {
+  return [...others]
+    .filter((other) => ids.has(other.id))
+    .map((other) => ({ id: other.id, d: Math.hypot(other.x - me.x, other.y - me.y) }))
+    .sort((a, b) => a.d - b.d)
+    .map((entry) => entry.id);
+}
