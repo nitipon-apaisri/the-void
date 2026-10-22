@@ -2,13 +2,14 @@
 import Phaser from "phaser";
 
 // shared
-import { PROXIMITY_RADIUS, SPAWN, type AuthSession } from "@void/shared";
+import { SPAWN, type AuthSession } from "@void/shared";
 
 // config
 import {
   API_URL,
   CONNECT_RETRY_MS,
   PROXIMITY_CHECK_MS,
+  PROXIMITY_RADIUS,
   MOVE_SEND_INTERVAL_MS,
   PLAYER_RADIUS,
   PLAYER_SPEED,
