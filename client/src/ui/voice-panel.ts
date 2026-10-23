@@ -1,6 +1,10 @@
 // net
 import type { MediaKind } from "../net/voice-connection";
 
+// ui
+import { ICONS } from "./icons";
+import { applyTheme } from "./theme";
+
 // utils
 import { injectStyle } from "../utils/dom";
 
@@ -22,23 +26,26 @@ export interface VoicePanel {
 
 const STYLE_ID = "void-voice-style";
 const STYLES = `
-.void-voice { position: fixed; left: 50%; bottom: 16px; z-index: 900; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px; font: 14px system-ui, sans-serif; }
-.void-voice__videos { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
-.void-voice__videos video { width: 160px; height: 120px; object-fit: cover; border-radius: 8px;
-  background: #111827; border: 1px solid #374151; }
-.void-voice__screens { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
-.void-voice__screens video { width: min(480px, 90vw); aspect-ratio: 16 / 9; object-fit: contain;
-  border-radius: 8px; background: #000; border: 1px solid #374151; }
-.void-voice__controls { display: flex; gap: 8px; }
-.void-voice button { padding: 8px 14px; border-radius: 8px; border: 1px solid #374151;
-  background: #1f2937; color: #f9fafb; cursor: pointer; font: inherit; }
-.void-voice button[aria-pressed="true"] { background: #064e3b; border-color: #047857; }
-.void-voice button:disabled { opacity: 0.5; cursor: not-allowed; }
-.void-voice button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.void-voice { position: fixed; left: 50%; bottom: 18px; z-index: 900; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 12px; font: 500 12px var(--v-font); }
+.void-voice__videos, .void-voice__screens { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
+.void-voice__videos video { width: 168px; height: 126px; object-fit: cover; border-radius: var(--v-radius);
+  background: var(--v-glass-solid); border: 1px solid var(--v-line); box-shadow: var(--v-shadow); }
+.void-voice__screens video { width: min(520px, 90vw); aspect-ratio: 16 / 9; object-fit: contain;
+  border-radius: var(--v-radius); background: #000; border: 1px solid var(--v-line); box-shadow: var(--v-shadow); }
+.void-voice__controls { display: flex; gap: 4px; padding: 6px; border-radius: 22px; }
+.void-voice button { display: grid; justify-items: center; gap: 3px; min-width: 68px; padding: 9px 10px 7px;
+  border-radius: 16px; border: 0; background: transparent; color: var(--v-muted); cursor: pointer; font: inherit;
+  transition: background 0.15s, color 0.15s; }
+.void-voice button:hover:not(:disabled) { background: var(--v-hover); color: var(--v-text); }
+.void-voice button[aria-pressed="true"] { background: rgb(139 147 255 / 0.2); color: var(--v-text); }
+.void-voice button[aria-pressed="true"] svg { color: var(--v-accent); }
+.void-voice button:disabled { opacity: 0.4; cursor: not-allowed; }
+.void-voice button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 1px; }
 `;
 
 export function createVoicePanel(): VoicePanel {
+  applyTheme();
   injectStyle(STYLE_ID, STYLES);
 
   const root = document.createElement("div");
@@ -51,17 +58,17 @@ export function createVoicePanel(): VoicePanel {
   const audio = document.createElement("div");
   audio.hidden = true;
   const controls = document.createElement("div");
-  controls.className = "void-voice__controls";
+  controls.className = "void-voice__controls v-glass";
   root.append(screens, videos, audio, controls);
 
   let toggleMic: (on: boolean) => Promise<void> = async () => {};
   let toggleCamera: (on: boolean) => Promise<void> = async () => {};
   let toggleScreen: (on: boolean) => Promise<void> = async () => {};
 
-  const makeToggle = (label: string, run: (on: boolean) => Promise<void>) => {
+  const makeToggle = (label: string, icon: string, run: (on: boolean) => Promise<void>) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = label;
+    button.innerHTML = `${icon}<span>${label}</span>`;
     button.disabled = true;
     button.setAttribute("aria-pressed", "false");
     button.addEventListener("click", async () => {
@@ -86,9 +93,9 @@ export function createVoicePanel(): VoicePanel {
     return button;
   };
 
-  const mic = makeToggle("Mic", (on) => toggleMic(on));
-  const camera = makeToggle("Camera", (on) => toggleCamera(on));
-  const screen = makeToggle("Share screen", (on) => toggleScreen(on));
+  const mic = makeToggle("Mic", ICONS.mic, (on) => toggleMic(on));
+  const camera = makeToggle("Camera", ICONS.camera, (on) => toggleCamera(on));
+  const screen = makeToggle("Share screen", ICONS.screen, (on) => toggleScreen(on));
   controls.append(mic, camera, screen);
   document.body.append(root);
 

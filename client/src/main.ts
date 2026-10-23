@@ -7,7 +7,7 @@ new Phaser.Game({
   parent: "game",
   width: window.innerWidth,
   height: window.innerHeight,
-  backgroundColor: "#0b0b10",
+  backgroundColor: "#0d0e17",
   // The art is 32px pixel art: scale it with nearest-neighbour and whole pixels, never blurred.
   pixelArt: true,
   scene: [WorldScene],

@@ -8,6 +8,7 @@ import {
 
 // ui
 import { createAvatarPicker } from "./avatar-picker";
+import { applyTheme } from "./theme";
 
 // utils
 import { injectStyle } from "../utils/dom";
@@ -27,24 +28,30 @@ export type AuthSubmit = (mode: AuthMode, fields: AuthFields) => Promise<AuthSes
 const STYLE_ID = "void-auth-style";
 const STYLES = `
 .void-auth { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
-  background: rgb(11 11 16 / 0.85); font: 14px/1.4 system-ui, sans-serif; color: #f9fafb; }
-.void-auth form { width: min(360px, calc(100vw - 32px)); padding: 24px; border-radius: 12px;
-  background: #111827; border: 1px solid #374151; display: grid; gap: 16px; }
-.void-auth h1 { margin: 0; font-size: 18px; }
-.void-auth label { display: grid; gap: 6px; color: #9ca3af; }
-.void-auth input { padding: 10px 12px; border-radius: 8px; border: 1px solid #374151;
-  background: #0b0b10; color: #f9fafb; font: inherit; }
-.void-auth input:focus-visible, .void-auth button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+  background: radial-gradient(900px 520px at 50% 0%, rgb(139 147 255 / 0.22), transparent 70%), var(--v-bg);
+  font: 14px/1.4 var(--v-font); color: var(--v-text); }
+.void-auth form { width: min(380px, calc(100vw - 32px)); padding: 28px; border-radius: 22px;
+  background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
+  -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur); display: grid; gap: 16px; }
+.void-auth h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.void-auth label { display: grid; gap: 6px; color: var(--v-muted); font-size: 13px; }
+.void-auth input { padding: 11px 13px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line);
+  background: var(--v-field); color: var(--v-text); font: inherit; transition: border-color 0.15s, background 0.15s; }
+.void-auth input:focus { outline: none; border-color: var(--v-accent); background: var(--v-hover); }
+.void-auth button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }
 .void-auth [hidden] { display: none; }
-.void-auth .submit { padding: 10px 12px; border-radius: 8px; border: 0; cursor: pointer;
-  background: #6ee7b7; color: #052e1f; font: inherit; font-weight: 600; }
+.void-auth .submit { padding: 11px 14px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--v-accent); color: var(--v-accent-ink); font: inherit; font-weight: 650;
+  transition: filter 0.15s; }
+.void-auth .submit:hover:not(:disabled) { filter: brightness(1.1); }
 .void-auth .submit:disabled { opacity: 0.6; cursor: wait; }
-.void-auth .switch { background: none; border: 0; color: #93c5fd; cursor: pointer; font: inherit; padding: 0; justify-self: start; }
-.void-auth .error { margin: 0; color: #fca5a5; min-height: 1.4em; }
+.void-auth .switch { background: none; border: 0; color: var(--v-accent); cursor: pointer; font: inherit; padding: 0; justify-self: start; }
+.void-auth .error { margin: 0; color: var(--v-danger); min-height: 1.4em; }
 `;
 
 /** Shows the sign in / create account form until `submit` succeeds, then resolves with the session. */
 export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession> {
+  applyTheme();
   injectStyle(STYLE_ID, STYLES);
   let mode: AuthMode = "login";
 

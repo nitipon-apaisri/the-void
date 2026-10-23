@@ -1,28 +1,35 @@
 // shared
 import type { DesktopBridge, ScreenSource } from "@void/shared";
 
+// ui
+import { applyTheme } from "./theme";
+
 // utils
 import { injectStyle } from "../utils/dom";
 
 const STYLE_ID = "void-screen-picker-style";
 const STYLES = `
 .void-picker { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
-  background: rgb(11 11 16 / 0.85); font: 14px/1.4 system-ui, sans-serif; color: #f9fafb; }
-.void-picker__dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
-  padding: 24px; border-radius: 12px; background: #111827; border: 1px solid #374151; display: grid; gap: 16px; }
-.void-picker h2 { margin: 0; font-size: 18px; }
-.void-picker h3 { margin: 0; font-size: 13px; color: #9ca3af; font-weight: 600; }
+  background: rgb(8 9 16 / 0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font: 14px/1.4 var(--v-font); color: var(--v-text); }
+.void-picker__dialog { width: min(740px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+  padding: 24px; border-radius: 22px; background: var(--v-glass-solid); border: 1px solid var(--v-line);
+  box-shadow: var(--v-shadow); display: grid; gap: 16px; }
+.void-picker h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.void-picker h3 { margin: 0; font-size: 12px; color: var(--v-muted); font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
 .void-picker__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
-.void-picker__item { display: grid; gap: 6px; padding: 8px; border-radius: 8px; border: 1px solid #374151;
-  background: #1f2937; color: inherit; cursor: pointer; font: inherit; text-align: left; }
-.void-picker__item:hover, .void-picker__item:focus-visible { border-color: #6ee7b7; outline: none; }
-.void-picker__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #000; border-radius: 4px; }
-.void-picker__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.void-picker__note { margin: 0; padding: 10px 12px; border-radius: 8px; background: #422006; color: #fde68a; }
+.void-picker__item { display: grid; gap: 8px; padding: 8px; border-radius: 14px; border: 1px solid var(--v-line);
+  background: var(--v-field); color: inherit; cursor: pointer; font: inherit; text-align: left;
+  transition: border-color 0.15s, background 0.15s; }
+.void-picker__item:hover, .void-picker__item:focus-visible { border-color: var(--v-accent); background: var(--v-hover); outline: none; }
+.void-picker__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #000; border-radius: 8px; }
+.void-picker__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px 2px; }
+.void-picker__note { margin: 0; padding: 10px 14px; border-radius: var(--v-radius-sm); background: rgb(251 191 36 / 0.14); color: #fde68a; }
 .void-picker__actions { display: flex; gap: 8px; justify-content: flex-end; }
-.void-picker button.plain { padding: 8px 14px; border-radius: 8px; border: 1px solid #374151;
-  background: #1f2937; color: #f9fafb; cursor: pointer; font: inherit; }
-.void-picker button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.void-picker button.plain { padding: 8px 18px; border-radius: 999px; border: 1px solid var(--v-line);
+  background: var(--v-field); color: var(--v-text); cursor: pointer; font: inherit; font-weight: 500; }
+.void-picker button.plain:hover { background: var(--v-hover); }
+.void-picker button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }
 `;
 
 /** The person closed the picker without choosing; same error a browser gives on cancel. */
@@ -58,6 +65,7 @@ function section(title: string, items: ScreenSource[], pick: (id: string) => voi
  * Rejects with a NotAllowedError if they cancel.
  */
 export async function chooseScreenSource(bridge: DesktopBridge): Promise<void> {
+  applyTheme();
   injectStyle(STYLE_ID, STYLES);
   const { sources, needsPermission } = await bridge.listScreenSources();
 
