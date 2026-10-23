@@ -2,7 +2,14 @@
 import Phaser from "phaser";
 
 // shared
-import { SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge, type Look } from "@void/shared";
+import {
+  SPAWN,
+  TILE_SIZE,
+  type AuthSession,
+  type DesktopBridge,
+  type Look,
+  type Position,
+} from "@void/shared";
 
 // config
 import {
@@ -26,6 +33,7 @@ import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/voi
 import { stepZoom } from "../systems/zoom";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
+import { findPath, followPath } from "../systems/pathfinding";
 import { stepPosition } from "../systems/movement";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
@@ -71,6 +79,8 @@ export class WorldScene extends Phaser.Scene {
   private settings: Settings = loadSettings(this.defaults);
   private closeSettings?: () => void;
   private zoomControls?: ZoomControls;
+  // Where a click is sending us: waypoints still to reach.
+  private route: Position[] = [];
   private lastSent = 0;
   private unsent = false;
 
@@ -103,6 +113,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.keys = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.walkTo(pointer));
     this.toast = createToast();
     this.voicePanel = createVoicePanel();
     this.voicePanel.setVolume(this.settings.volume);
@@ -395,6 +406,25 @@ export class WorldScene extends Phaser.Scene {
     this.others.delete(id);
   }
 
+  // A click on the world: walk there, round walls. Overlays sit above the canvas and take their
+  // own clicks, so this only sees clicks on the map.
+  private walkTo(pointer: Phaser.Input.Pointer) {
+    const me = this.me;
+    if (!me || !pointer.leftButtonDown()) return;
+    const route = findPath(this.grid, me, { x: pointer.worldX, y: pointer.worldY }, PLAYER_RADIUS);
+    if (route.length === 0) return;
+    this.route = route;
+    const end = route[route.length - 1]!;
+    const marker = this.add.circle(end.x, end.y, 6).setStrokeStyle(2, 0x8b93ff).setDepth(5);
+    this.tweens.add({
+      targets: marker,
+      scale: 2,
+      alpha: 0,
+      duration: 500,
+      onComplete: () => marker.destroy(),
+    });
+  }
+
   update(time: number, delta: number) {
     const me = this.me;
     if (!me) return;
@@ -412,6 +442,14 @@ export class WorldScene extends Phaser.Scene {
       },
       this.settings.keys,
     );
+    // Pressing a movement key takes over from a click.
+    if (dir.dx || dir.dy) this.route = [];
+    else if (this.route.length > 0) {
+      const walk = followPath(this.route, me, PLAYER_SPEED * (delta / 1000));
+      this.route = walk.rest;
+      dir.dx = walk.dx;
+      dir.dy = walk.dy;
+    }
     if (dir.dx || dir.dy) {
       const target = stepPosition(me, dir, PLAYER_SPEED, delta);
       const next = moveWithCollision(this.grid, me, target, PLAYER_RADIUS);
@@ -419,6 +457,9 @@ export class WorldScene extends Phaser.Scene {
         me.step(dir.dx, dir.dy);
         me.setPosition(next.x, next.y);
         this.unsent = true;
+      } else {
+        // Something is in the way (another wall edge or a bad route): stop instead of pushing.
+        this.route = [];
       }
     }
     me.tick(time);
