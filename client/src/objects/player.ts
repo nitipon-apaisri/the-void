@@ -52,6 +52,10 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     this.play();
   }
 
+  setNameVisible(visible: boolean) {
+    this.label.setVisible(visible);
+  }
+
   /** Call whenever this player takes a step; (dx, dy) says which way. */
   step(dx: number, dy: number) {
     this.lastStep = this.scene.time.now;

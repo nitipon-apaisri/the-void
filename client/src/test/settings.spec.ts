@@ -39,10 +39,27 @@ describe("sanitizeSettings", () => {
 
   it("falls back per field when a value has the wrong type", () => {
     const result = sanitizeSettings(
-      { proximityTiles: "5", volume: Number.NaN, keys: "dvorak", micDeviceId: 7 },
+      {
+        proximityTiles: "5",
+        volume: Number.NaN,
+        keys: "dvorak",
+        micDeviceId: 7,
+        zoom: "2",
+        maxFps: 144,
+        showNames: "yes",
+      },
       defaults,
     );
     expect(result).toEqual(defaults);
+  });
+
+  it("accepts only the zoom levels and frame caps we offer", () => {
+    expect(sanitizeSettings({ zoom: 2, maxFps: 30 }, defaults)).toMatchObject({
+      zoom: 2,
+      maxFps: 30,
+    });
+    expect(sanitizeSettings({ zoom: 2.5 }, defaults).zoom).toBe(defaults.zoom);
+    expect(sanitizeSettings({ showNames: false }, defaults).showNames).toBe(false);
   });
 });
 

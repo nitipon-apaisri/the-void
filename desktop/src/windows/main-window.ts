@@ -23,6 +23,10 @@ export function createMainWindow(url: string): BrowserWindow {
     return { action: "deny" };
   });
 
+  // Pinch and Cmd/Ctrl + wheel zoom the game camera, not the page, so the browser's own
+  // pinch-zoom must stay off for those events to reach the client.
+  void win.webContents.setVisualZoomLevelLimits(1, 1);
+
   void win.loadURL(url);
   return win;
 }

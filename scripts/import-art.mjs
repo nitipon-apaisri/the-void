@@ -86,6 +86,8 @@ const blank = () => Array.from({ length: COLS * ROWS }, () => 0);
 const floor = blank();
 const decor = blank();
 const objects = blank();
+// Drawn over players, for the tops of tall things people can walk behind.
+const above = blank();
 // Never drawn. Any tile here blocks movement, so what you see and what you bump into can differ
 // (the art is not tile-aligned: a table can be 2.4 tiles wide inside a 4 tile stamp).
 const collision = blank();
@@ -102,6 +104,13 @@ const stamp = (layer, name, col, row, w, h, x, y) => {
 };
 const block = (x, y, w = 1, h = 1) => {
   for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) collision[at(x + dx, y + dy)] = 1;
+};
+// Something taller than its footprint: only the bottom `solid` rows block and sit under
+// players; the rows above it are drawn over them, so you can walk behind it.
+const tall = (name, col, row, w, h, x, y, solid = 1) => {
+  stamp(above, name, col, row, w, h - solid, x, y);
+  stamp(objects, name, col, row + h - solid, w, solid, x, y + h - solid);
+  block(x, y + h - solid, w, solid);
 };
 // The middle tile of a floor pattern is plain, so it repeats without visible seams.
 const carpet = (name, col, row, x0, y0, x1, y1) => {
@@ -153,6 +162,10 @@ stamp(decor, "generic", 9, 4, 4, 3, 3, 20);
 stamp(objects, "generic", 6, 11, 3, 2, 4, 23);
 block(4, 23, 3, 1);
 
+// A TV on a stand and a sideboard in the lounge
+tall("generic", 6, 0, 1, 3, 9, 20);
+tall("generic", 0, 11, 2, 2, 12, 22);
+
 // Meeting room
 stamp(objects, "conference", 0, 1, 5, 3, 26, 8);
 block(27, 8, 3, 3);
@@ -187,7 +200,7 @@ const map = {
   type: "map",
   version: "1.10",
   tiledversion: "1.10.2",
-  nextlayerid: 5,
+  nextlayerid: 6,
   nextobjectid: 1,
   width: COLS,
   height: ROWS,
@@ -197,6 +210,7 @@ const map = {
     layer(1, "floor", floor),
     layer(2, "decor", decor),
     layer(3, "objects", objects),
+    layer(5, "above", above),
     { ...layer(4, "collision", collision), visible: false },
   ],
   tilesets,

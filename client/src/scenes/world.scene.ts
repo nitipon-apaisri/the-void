@@ -24,6 +24,7 @@ import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/voi
 
 // systems
 import { FRAME } from "../systems/character-frames";
+import { stepZoom } from "../systems/zoom";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
 import { stepPosition } from "../systems/movement";
@@ -40,6 +41,7 @@ import { promptAuth } from "../ui/auth-form";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { openSettings } from "../ui/settings-window";
 import { createToast, type Toast } from "../ui/toast";
+import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
@@ -70,6 +72,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly defaults = defaultSettings(DEFAULT_PROXIMITY_TILES);
   private settings: Settings = loadSettings(this.defaults);
   private closeSettings?: () => void;
+  private zoomControls?: ZoomControls;
   private lastSent = 0;
   private unsent = false;
 
@@ -93,6 +96,8 @@ export class WorldScene extends Phaser.Scene {
     const map = this.make.tilemap({ key: "office" });
     const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
     for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
+    // The tops of tall things (a TV, a shelf) hang over players who walk behind them.
+    if (map.getLayer("above")) map.createLayer("above", tilesets)?.setDepth(20);
     // "collision" is never drawn: any tile in it blocks movement.
     const collision = map.getLayer("collision");
     if (!collision) throw new Error("the map has no collision layer");
@@ -103,6 +108,7 @@ export class WorldScene extends Phaser.Scene {
       (col, row) => collision.data[row][col].index > 0,
     );
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.applyGraphics();
 
     this.keys = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
@@ -121,7 +127,12 @@ export class WorldScene extends Phaser.Scene {
       if (on && bridge) await this.pickScreen(bridge);
       await this.voice?.setScreenShareEnabled(on);
     });
+    this.zoomControls = createZoomControls(
+      (direction) => this.setZoom(stepZoom(this.settings.zoom, direction)),
+      () => this.setZoom(this.defaults.zoom),
+    );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.zoomControls?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -143,8 +154,9 @@ export class WorldScene extends Phaser.Scene {
       onSignOut: () => this.signOut(),
     });
 
-    this.me = new PlayerSprite(this, SPAWN.x, SPAWN.y, session.user.name, session.user.avatar);
-    this.cameras.main.startFollow(this.me, true, 0.15, 0.15);
+    this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.avatar);
+    // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
+    this.cameras.main.startFollow(this.me, true, 0.1, 0.1).setDeadzone(24, 16);
     void this.connect();
   }
 
@@ -202,10 +214,32 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
+  private spawnPlayer(x: number, y: number, name: string, avatar: number) {
+    const player = new PlayerSprite(this, x, y, name, avatar);
+    player.setNameVisible(this.settings.showNames);
+    return player;
+  }
+
+  // Only once you are in the world: the sign-in screen has nothing to zoom.
+  private setZoom(zoom: number) {
+    if (!this.me || zoom === this.settings.zoom) return;
+    this.applySettings({ ...this.settings, zoom });
+  }
+
+  private applyGraphics() {
+    this.cameras.main.setZoom(this.settings.zoom);
+    this.game.loop.targetFps = this.settings.maxFps;
+  }
+
   private applySettings(next: Settings) {
     const prev = this.settings;
     this.settings = next;
     saveSettings(next);
+    this.applyGraphics();
+    if (next.showNames !== prev.showNames) {
+      this.me?.setNameVisible(next.showNames);
+      for (const other of this.others.values()) other.setNameVisible(next.showNames);
+    }
     this.voicePanel.setVolume(next.volume);
     if (next.micDeviceId !== prev.micDeviceId)
       void this.voice?.setDevice("audioinput", next.micDeviceId);
@@ -267,7 +301,7 @@ export class WorldScene extends Phaser.Scene {
 
       connection.onPlayerAdd((p) => {
         if (p.id === connection.sessionId) return;
-        this.others.set(p.id, new PlayerSprite(this, p.x, p.y, p.name, p.avatar));
+        this.others.set(p.id, this.spawnPlayer(p.x, p.y, p.name, p.avatar));
       });
       connection.onPlayerMove((p) => {
         const sprite = this.others.get(p.id);

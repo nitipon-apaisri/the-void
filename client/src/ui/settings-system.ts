@@ -3,6 +3,8 @@ import {
   PROXIMITY_MAX_TILES,
   PROXIMITY_MIN_TILES,
   PROXIMITY_STEP_TILES,
+  FPS_OPTIONS,
+  ZOOM_LEVELS,
   type KeyScheme,
   type Settings,
 } from "../systems/settings";
@@ -64,6 +66,19 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
       <p data-device-note hidden>Device names appear after you allow the microphone or camera once.</p>
     </section>
     <section>
+      <h2>Graphics</h2>
+      <label>Zoom
+        <select name="zoom"></select>
+      </label>
+      <label>Frame rate limit
+        <select name="fps"></select>
+      </label>
+      <label class="row" style="grid-auto-flow: column; justify-content: start">
+        <input type="checkbox" name="names" /> Show player names
+      </label>
+      <p>Whole-number zoom keeps the pixels sharp. A lower frame rate saves battery.</p>
+    </section>
+    <section>
       <h2>Controls</h2>
       <label>Movement keys
         <select name="keys"></select>
@@ -80,7 +95,13 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
   const volumeOut = q("[data-volume]");
   const keys = q<HTMLSelectElement>("select[name=keys]");
 
+  const zoom = q<HTMLSelectElement>("select[name=zoom]");
+  const fps = q<HTMLSelectElement>("select[name=fps]");
+  const names = q<HTMLInputElement>("input[name=names]");
+
   for (const { value, label } of KEY_OPTIONS) keys.append(new Option(label, value));
+  for (const level of ZOOM_LEVELS) zoom.append(new Option(`${level}×`, String(level)));
+  for (const cap of FPS_OPTIONS) fps.append(new Option(`${cap} fps`, String(cap)));
 
   const showValues = () => {
     range.value = String(current.proximityTiles);
@@ -88,6 +109,9 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
     volume.value = String(Math.round(current.volume * 100));
     volumeOut.textContent = `${volume.value}%`;
     keys.value = current.keys;
+    zoom.value = String(current.zoom);
+    fps.value = String(current.maxFps);
+    names.checked = current.showNames;
   };
 
   range.addEventListener("input", () => {
@@ -99,6 +123,9 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
     volumeOut.textContent = `${volume.value}%`;
   });
   keys.addEventListener("change", () => change({ keys: keys.value as KeyScheme }));
+  zoom.addEventListener("change", () => change({ zoom: Number(zoom.value) }));
+  fps.addEventListener("change", () => change({ maxFps: Number(fps.value) }));
+  names.addEventListener("change", () => change({ showNames: names.checked }));
 
   const selects = DEVICE_FIELDS.map(({ kind, key, label }) => {
     const wrap = document.createElement("label");
@@ -129,6 +156,9 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
       proximityTiles: ctx.defaults.proximityTiles,
       volume: ctx.defaults.volume,
       keys: ctx.defaults.keys,
+      zoom: ctx.defaults.zoom,
+      maxFps: ctx.defaults.maxFps,
+      showNames: ctx.defaults.showNames,
     });
     showValues();
     for (const { select, key } of selects) select.value = current[key];
