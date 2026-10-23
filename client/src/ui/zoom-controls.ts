@@ -1,23 +1,17 @@
-// systems
-import { createWheelStepper } from "../systems/zoom";
-
 export interface ZoomControls {
   destroy(): void;
 }
 
-// A pinch adds up to about this much before it counts as one step.
-const WHEEL_THRESHOLD = 40;
+export interface ZoomHandlers {
+  /** Cmd/Ctrl with + or -. */
+  onStep(direction: 1 | -1): void;
+  /** Cmd/Ctrl with 0. */
+  onReset(): void;
+  /** A trackpad pinch (browsers report it as Ctrl + wheel) or Cmd/Ctrl + wheel; at the pointer. */
+  onPinch(deltaY: number, x: number, y: number): void;
+}
 
-/**
- * Cmd/Ctrl with +, - or 0, and Cmd/Ctrl with the wheel (which is also how browsers report a
- * trackpad pinch). `onStep` gets 1 or -1; `onReset` goes back to the default.
- */
-export function createZoomControls(
-  onStep: (direction: 1 | -1) => void,
-  onReset: () => void,
-): ZoomControls {
-  const stepper = createWheelStepper(WHEEL_THRESHOLD);
-
+export function createZoomControls({ onStep, onReset, onPinch }: ZoomHandlers): ZoomControls {
   const onKey = (e: KeyboardEvent) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     if (e.key === "+" || e.key === "=") onStep(1);
@@ -29,10 +23,16 @@ export function createZoomControls(
   };
 
   const onWheel = (e: WheelEvent) => {
-    if (!(e.metaKey || e.ctrlKey)) return;
-    e.preventDefault();
-    const direction = stepper(e.deltaY);
-    if (direction) onStep(direction);
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      onPinch(e.deltaY, e.clientX, e.clientY);
+      return;
+    }
+    // Two-finger scroll over the map zooms too; the panels above it scroll on their own.
+    if (e.target instanceof HTMLCanvasElement) {
+      e.preventDefault();
+      onPinch(e.deltaY, e.clientX, e.clientY);
+    }
   };
 
   window.addEventListener("keydown", onKey);

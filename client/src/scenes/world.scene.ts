@@ -40,7 +40,8 @@ import {
 } from "../net/void-connection";
 
 // systems
-import { effectiveZoom, stepZoom } from "../systems/zoom";
+import { anchorCenter, isDrag, panBy } from "../systems/pan";
+import { effectiveZoom, stepZoom, zoomByWheel } from "../systems/zoom";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
 import { findPath, followPath } from "../systems/pathfinding";
@@ -114,6 +115,11 @@ export class WorldScene extends Phaser.Scene {
   private lastMinimap = 0;
   // Where a click is sending us: waypoints still to reach.
   private route: Position[] = [];
+  // The zoom on screen. Settings keep a steady level; a pinch moves this in between.
+  private viewZoom = this.settings.zoom;
+  // True after a drag or scroll takes the camera off the player.
+  private looseCamera = false;
+  private press?: { start: Position; last: Position; dragging?: boolean };
   private lastSent = 0;
   private unsent = false;
 
@@ -143,8 +149,8 @@ export class WorldScene extends Phaser.Scene {
     );
     this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
     this.mapControls = createMapControls({
-      onZoomIn: () => this.setZoom(stepZoom(this.settings.zoom, 1)),
-      onZoomOut: () => this.setZoom(stepZoom(this.settings.zoom, -1)),
+      onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
+      onZoomOut: () => this.setZoom(stepZoom(this.viewZoom, -1)),
       onLocate: () => this.showMe(),
       onToggleMinimap: () => {
         this.minimapShown = !this.minimapShown;
@@ -158,7 +164,10 @@ export class WorldScene extends Phaser.Scene {
 
     this.keys = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
-    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.walkTo(pointer));
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.pressMap(pointer));
+    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => this.dragMap(pointer));
+    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => this.releaseMap(pointer));
+    this.input.on("pointerupoutside", () => this.endPress());
     this.toast = createToast();
     this.voicePanel = createVoicePanel();
     this.voicePanel.setVolume(this.settings.volume);
@@ -174,10 +183,11 @@ export class WorldScene extends Phaser.Scene {
       if (on && bridge) await this.pickScreen(bridge);
       await this.voice?.setScreenShareEnabled(on);
     });
-    this.zoomControls = createZoomControls(
-      (direction) => this.setZoom(stepZoom(this.settings.zoom, direction)),
-      () => this.setZoom(this.defaults.zoom),
-    );
+    this.zoomControls = createZoomControls({
+      onStep: (direction) => this.setZoom(stepZoom(this.viewZoom, direction)),
+      onReset: () => this.setZoom(this.defaults.zoom),
+      onPinch: (deltaY, x, y) => this.pinchZoom(deltaY, x, y),
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.zoomControls?.destroy();
       this.minimap?.destroy();
@@ -221,7 +231,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.look);
     // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
-    this.cameras.main.startFollow(this.me, true, 0.1, 0.1).setDeadzone(24, 16);
+    this.followMe();
     void this.connect();
   }
 
@@ -465,15 +475,51 @@ export class WorldScene extends Phaser.Scene {
 
   // Only once you are in the world: the sign-in screen has nothing to zoom.
   private setZoom(zoom: number) {
-    if (!this.me || zoom === this.settings.zoom) return;
+    if (!this.me) return;
+    this.viewZoom = zoom;
     this.applySettings({ ...this.settings, zoom });
+  }
+
+  // A pinch zooms smoothly and is not saved; the saved zoom is still one of the steady levels.
+  private pinchZoom(deltaY: number, x: number, y: number) {
+    if (!this.me) return;
+    const camera = this.cameras.main;
+    const before = camera.zoom;
+    this.viewZoom = zoomByWheel(this.viewZoom, deltaY);
+    this.applyGraphics();
+    // Following, the view stays on you. Panned away, keep the spot under the fingers in place.
+    if (!this.looseCamera) return;
+    const center = anchorCenter(
+      { x: camera.scrollX + camera.width / 2, y: camera.scrollY + camera.height / 2 },
+      { x: x - this.scale.width / 2, y: y - this.scale.height / 2 },
+      before,
+      camera.zoom,
+    );
+    camera.centerOn(center.x, center.y);
+  }
+
+  // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
+  private followMe() {
+    if (!this.me) return;
+    this.cameras.main.startFollow(this.me, true, 0.1, 0.1).setDeadzone(24, 16);
+    this.looseCamera = false;
+  }
+
+  private panCamera(dx: number, dy: number) {
+    const camera = this.cameras.main;
+    if (!this.looseCamera) {
+      camera.stopFollow();
+      this.looseCamera = true;
+    }
+    const next = panBy({ x: camera.scrollX, y: camera.scrollY }, { x: dx, y: dy }, camera.zoom);
+    camera.setScroll(next.x, next.y);
   }
 
   private applyGraphics() {
     const camera = this.cameras.main;
     const bounds = camera.getBounds();
     // Never smaller than the map, or a big window would show an empty border around it.
-    camera.setZoom(effectiveZoom(this.settings.zoom, this.scale, bounds));
+    camera.setZoom(effectiveZoom(this.viewZoom, this.scale, bounds));
     this.game.loop.targetFps = this.settings.maxFps;
   }
 
@@ -481,6 +527,7 @@ export class WorldScene extends Phaser.Scene {
     const prev = this.settings;
     this.settings = next;
     saveSettings(next);
+    if (next.zoom !== prev.zoom) this.viewZoom = next.zoom;
     this.applyGraphics();
     if (next.showNames !== prev.showNames) {
       this.me?.setNameVisible(next.showNames);
@@ -674,14 +721,37 @@ export class WorldScene extends Phaser.Scene {
 
   // A click on the world: walk there, round walls. Overlays sit above the canvas and take their
   // own clicks, so this only sees clicks on the map.
-  private walkTo(pointer: Phaser.Input.Pointer) {
+  // A press that stays put is a click and walks on release; one that moves drags the map instead.
+  private pressMap(pointer: Phaser.Input.Pointer) {
     if (!pointer.leftButtonDown()) return;
-    this.walkToPoint({ x: pointer.worldX, y: pointer.worldY });
+    this.press = { start: { x: pointer.x, y: pointer.y }, last: { x: pointer.x, y: pointer.y } };
+  }
+
+  private dragMap(pointer: Phaser.Input.Pointer) {
+    const press = this.press;
+    if (!press || !this.me || !pointer.leftButtonDown()) return;
+    if (!press.dragging && !isDrag(press.start, pointer)) return;
+    if (!press.dragging) this.input.setDefaultCursor("grabbing");
+    press.dragging = true;
+    this.panCamera(pointer.x - press.last.x, pointer.y - press.last.y);
+    press.last = { x: pointer.x, y: pointer.y };
+  }
+
+  private releaseMap(pointer: Phaser.Input.Pointer) {
+    const clicked = this.press && !this.press.dragging;
+    this.endPress();
+    if (clicked) this.walkToPoint({ x: pointer.worldX, y: pointer.worldY });
+  }
+
+  private endPress() {
+    this.press = undefined;
+    this.input.setDefaultCursor("default");
   }
 
   private walkToPoint(point: Position) {
     const me = this.me;
     if (!me) return;
+    this.followMe();
     const route = findPath(this.grid, me, point, PLAYER_RADIUS);
     if (route.length === 0) return;
     this.route = route;
@@ -700,6 +770,7 @@ export class WorldScene extends Phaser.Scene {
   private showMe() {
     const me = this.me;
     if (!me) return;
+    this.followMe();
     for (let i = 0; i < 3; i++) {
       const ring = this.add.circle(me.x, me.y, 10).setStrokeStyle(3, 0x8b93ff).setDepth(5);
       this.tweens.add({
@@ -731,8 +802,10 @@ export class WorldScene extends Phaser.Scene {
       this.settings.keys,
     );
     // Pressing a movement key takes over from a click.
-    if (dir.dx || dir.dy) this.route = [];
-    else if (this.route.length > 0) {
+    if (dir.dx || dir.dy) {
+      this.route = [];
+      if (this.looseCamera) this.followMe();
+    } else if (this.route.length > 0) {
       const walk = followPath(this.route, me, PLAYER_SPEED * (delta / 1000));
       this.route = walk.rest;
       dir.dx = walk.dx;

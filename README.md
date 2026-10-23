@@ -8,7 +8,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Spaces**: each space is its own room with its own members and its own voice. You pick one after signing in; the last one opens by itself.
 - **Invite links**: owners and admins share a link, optionally needing their approval; pending people appear in the People panel.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
-- **Map controls**: a mini map and floating buttons for zoom and "show me".
+- **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
 - **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting.
 - **Character customize**: five layered parts (skin, eyes, outfit, hair, extra), each with a style and a colour.
@@ -16,7 +16,37 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 
 The server is authoritative. It checks who may join a space, and it refuses moves into walls or faster than walking speed.
 
-The roadmap (table claiming, waving, furniture, roles) is in [`PLAN.md`](PLAN.md).
+## Feature checklist
+
+Built and tried by hand:
+
+- [x] Accounts: sign up, sign in, edit profile, change email or password, sign out other devices, delete account
+- [x] Character customize (five layered parts)
+- [x] Walking with arrow keys or WASD, and click to move with pathfinding
+- [x] Proximity voice, video and screen share
+- [x] Settings (range, devices, volume, keys, zoom, frame rate)
+- [x] Desktop app shell (Electron)
+- [x] Spaces, members and roles, with a space picker
+- [x] People panel: online and offline, search, walk to someone
+- [x] Invite links, with optional approval
+- [x] Bigger map (90 x 67 tiles), mini map and map buttons
+- [x] Server-side walls and speed limit
+- [x] Pinch or two-finger scroll to zoom, hold and drag to pan
+
+Planned (see [`PLAN.md`](PLAN.md)):
+
+- [ ] Claim a table (one per user) and unclaim
+- [ ] Waving to a nearby person
+- [ ] Decoration: place furniture
+- [ ] Change roles, remove members, kick and ban
+- [ ] Send each client only nearby players (needed for 100 people on this map)
+- [ ] Text chat, status and do-not-disturb, follow a person
+- [ ] Desktop notifications and the `thevoid://join/...` link
+- [ ] Packaging for macOS and Windows, signing, auto-update
+- [ ] Load test with 100 bots
+- [ ] Password reset and email verification (needs a mail provider)
+
+The full roadmap is in [`PLAN.md`](PLAN.md).
 
 ## How it fits together
 

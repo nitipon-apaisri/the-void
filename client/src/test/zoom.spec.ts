@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createWheelStepper, effectiveZoom, stepZoom } from "../systems/zoom";
+import { effectiveZoom, stepZoom, zoomByWheel } from "../systems/zoom";
 
 describe("stepZoom", () => {
   it("moves one level at a time", () => {
@@ -19,18 +19,19 @@ describe("stepZoom", () => {
   });
 });
 
-describe("createWheelStepper", () => {
-  it("waits until enough delta has built up", () => {
-    const step = createWheelStepper(40);
-    expect(step(-10)).toBe(0);
-    expect(step(-10)).toBe(0);
-    expect(step(-25)).toBe(1);
+describe("zoomByWheel", () => {
+  it("zooms in on negative deltas and out on positive ones", () => {
+    expect(zoomByWheel(1, -10)).toBeGreaterThan(1);
+    expect(zoomByWheel(1, 10)).toBeLessThan(1);
   });
 
-  it("zooms out on positive deltas and starts over after a step", () => {
-    const step = createWheelStepper(40);
-    expect(step(100)).toBe(-1);
-    expect(step(-10)).toBe(0);
+  it("stays inside the allowed range", () => {
+    expect(zoomByWheel(3, -25)).toBe(3);
+    expect(zoomByWheel(0.5, 25)).toBe(0.5);
+  });
+
+  it("limits one huge wheel click to a single modest step", () => {
+    expect(zoomByWheel(1, 1000)).toBe(zoomByWheel(1, 25));
   });
 });
 

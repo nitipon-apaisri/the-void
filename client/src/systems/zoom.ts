@@ -11,19 +11,17 @@ export function stepZoom(current: number, direction: 1 | -1): number {
   return ZOOM_LEVELS[next];
 }
 
-/**
- * Turns a stream of wheel deltas into zoom steps. A trackpad pinch sends many tiny deltas and a
- * mouse wheel a few big ones; collecting them until `threshold` makes both feel like one step.
- */
-export function createWheelStepper(threshold: number) {
-  let sum = 0;
-  return (deltaY: number): 1 | -1 | 0 => {
-    sum += deltaY;
-    if (Math.abs(sum) < threshold) return 0;
-    const direction = sum < 0 ? 1 : -1; // spreading fingers (negative delta) zooms in
-    sum = 0;
-    return direction;
-  };
+export const ZOOM_MIN = ZOOM_LEVELS[0];
+export const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+
+// A trackpad pinch sends small deltas and a mouse wheel big ones; capping each event keeps both smooth.
+const MAX_WHEEL_DELTA = 25;
+const WHEEL_SENSITIVITY = 0.01;
+
+/** Continuous zoom from a pinch or Cmd/Ctrl + wheel: spreading fingers (negative delta) zooms in. */
+export function zoomByWheel(current: number, deltaY: number): number {
+  const delta = Math.max(-MAX_WHEEL_DELTA, Math.min(MAX_WHEEL_DELTA, deltaY));
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, current * Math.exp(-delta * WHEEL_SENSITIVITY)));
 }
 
 /**
