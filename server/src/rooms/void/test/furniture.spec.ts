@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   blockRect,
-  canDecorate,
+  ART_CATALOG,
+  canEmptySpace,
+  customId,
   createGrid,
   findFurniture,
   placementError,
@@ -46,11 +48,40 @@ describe("parseRemove", () => {
   });
 });
 
-describe("canDecorate", () => {
+describe("canEmptySpace", () => {
   it("is for owners and admins", () => {
-    expect(canDecorate("owner")).toBe(true);
-    expect(canDecorate("admin")).toBe(true);
-    expect(canDecorate("member")).toBe(false);
+    expect(canEmptySpace("owner")).toBe(true);
+    expect(canEmptySpace("admin")).toBe(true);
+    expect(canEmptySpace("member")).toBe(false);
+  });
+});
+
+describe("free-form pieces", () => {
+  it("reads a rectangle of a sheet, solid or walkable", () => {
+    const rug = findFurniture(customId("generic", 9, 4, 4, 3, false));
+    expect(rug).toMatchObject({ sheet: "generic", sx: 9, sy: 4, w: 4, h: 3 });
+    expect(rug?.block).toBeUndefined();
+    expect(findFurniture(customId("walls", 0, 0, 2, 2, true))?.block).toEqual({
+      x: 0,
+      y: 0,
+      w: 2,
+      h: 2,
+    });
+  });
+
+  it("accepts every piece in the art catalogue", () => {
+    for (const { pieces } of ART_CATALOG) {
+      for (const p of pieces) {
+        expect(findFurniture(customId(p.sheet, p.sx, p.sy, p.w, p.h, true)), p.name).toBeDefined();
+      }
+    }
+  });
+
+  it("refuses anything outside the sheet or too big", () => {
+    expect(findFurniture(customId("conference", 15, 11, 2, 1, false))).toBeUndefined();
+    expect(findFurniture("x:generic:0:0:11:1:0")).toBeUndefined();
+    expect(findFurniture("x:nope:0:0:1:1:0")).toBeUndefined();
+    expect(findFurniture("x:generic:0:0:0:1:0")).toBeUndefined();
   });
 });
 

@@ -10,7 +10,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
 - **Sitting**: walk up to a chair and stop to sit down; move or click to stand again.
-- **Decorating**: owners and admins can place furniture from a catalogue, remove it again, or empty the whole space (the template's own furniture too) to start bare; it is saved with the space.
+- **Decorating**: every member can place furniture, from about 125 pieces sorted into groups (tables, chairs, plants, rugs, wall, doors and so on; pick a group, then a piece), or cut from any art sheet, and remove it again; owners and admins can also empty the whole space (the template's own furniture too) to start bare; it is saved with the space.
 - **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
@@ -38,7 +38,7 @@ Built and tried by hand:
 - [x] Server-side walls and speed limit
 - [x] Pinch or two-finger scroll to zoom, hold and drag to pan
 - [x] Claim a desk (one per person) and release it; the owner's name shows on it (tried by hand)
-- [x] Decoration: owners and admins place and remove furniture (tried by hand)
+- [x] Decoration: every member places and removes furniture, from the catalogue or any art sheet (tried by hand)
 - [x] Sit on desk, meeting and placed chairs; chairs tuck in closer to the desks (tried by hand)
 - [x] Wave at a nearby person; they get a toast (tried by hand)
 

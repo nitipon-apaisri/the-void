@@ -12,7 +12,7 @@ import {
   isSeatFacing,
   nearestFreeSeat,
   type Seat,
-  canDecorate,
+  canEmptySpace,
   findFurniture,
   fullRect,
   placementError,
@@ -1027,7 +1027,7 @@ export class WorldScene extends Phaser.Scene {
       });
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));
-      this.decorate?.setAvailable(this.space ? canDecorate(this.space.role) : false);
+      this.decorate?.setAvailable(true, this.space ? canEmptySpace(this.space.role) : false);
       void this.startVoice(connection);
       connection.onDrop(() => {
         this.toast.show("Connection lost. Reconnecting…", "error");

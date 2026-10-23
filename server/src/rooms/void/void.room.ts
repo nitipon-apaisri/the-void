@@ -3,7 +3,7 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 
 // shared
 import {
-  canDecorate,
+  canEmptySpace,
   DEFAULT_TEMPLATE,
   encodeLook,
   findFurniture,
@@ -171,9 +171,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.answer(MESSAGES.PLACE_FURNITURE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parsePlace(payload);
-      if (!account || !canDecorate(account.role))
-        throw new Error("only owners and admins can decorate");
-      if (!request) throw new Error("invalid request");
+      if (!account || !request) throw new Error("invalid request");
       if (this.state.furniture.size >= MAX_FURNITURE)
         throw new Error("the space is full of furniture");
       const { item, col, row } = request;
@@ -193,8 +191,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.answer(MESSAGES.REMOVE_FURNITURE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parseRemove(payload);
-      if (!account || !canDecorate(account.role))
-        throw new Error("only owners and admins can decorate");
+      if (!account) throw new Error("not joined");
       const piece = request && this.state.furniture.get(request.id);
       if (!request || !piece) throw new Error("that piece is gone");
       await options.furniture.remove(this.spaceId, request.id);
@@ -209,8 +206,8 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     });
     this.answer(MESSAGES.CLEAR_FURNITURE, async (client) => {
       const account = (client as Client<{ auth: Account }>).auth;
-      if (!account || !canDecorate(account.role)) {
-        throw new Error("only owners and admins can decorate");
+      if (!account || !canEmptySpace(account.role)) {
+        throw new Error("only owners and admins can empty the space");
       }
       await options.furniture.clear(this.spaceId);
       for (const [id, piece] of Array.from(this.state.furniture.entries())) {

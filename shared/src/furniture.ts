@@ -1,7 +1,7 @@
 import type { SpaceRole } from "./index.js";
 import type { SeatFacing } from "./seat.js";
 
-// Decoration. Owners and admins place furniture from this catalogue on a tile grid; the room
+// Decoration. Every member places furniture from this catalogue on a tile grid; the room
 // keeps the placed pieces (saved per space) and refuses a spot that is a wall, another piece,
 // a desk's box or someone's feet. Items are pieces of the sheets the map already uses.
 
@@ -9,6 +9,51 @@ import type { SeatFacing } from "./seat.js";
 const TILE = 32;
 // Stops one space from growing without limit (state, database and every client's drawing).
 export const MAX_FURNITURE = 300;
+
+/** The tile sheets pieces can be cut from, with their size in tiles. */
+export const SHEETS = {
+  generic: { cols: 16, rows: 78 },
+  conference: { cols: 16, rows: 12 },
+  floors: { cols: 15, rows: 40 },
+  walls: { cols: 32, rows: 40 },
+} as const;
+export type SheetName = keyof typeof SHEETS;
+export const isSheetName = (v: unknown): v is SheetName =>
+  typeof v === "string" && Object.prototype.hasOwnProperty.call(SHEETS, v);
+/** The biggest free-form piece, in tiles on either side. */
+export const MAX_CUSTOM_SIDE = 10;
+
+/** The id of a free-form piece: any rectangle of a sheet, solid or walkable. */
+export const customId = (
+  sheet: SheetName,
+  sx: number,
+  sy: number,
+  w: number,
+  h: number,
+  solid: boolean,
+) => `x:${sheet}:${sx}:${sy}:${w}:${h}:${solid ? 1 : 0}`;
+
+const CUSTOM = /^x:([a-z]+):(\d{1,3}):(\d{1,3}):(\d{1,2}):(\d{1,2}):([01])$/;
+
+/** Reads a free-form id back into an item, or undefined if it is not one or is out of range. */
+function parseCustom(id: string): FurnitureItem | undefined {
+  const m = CUSTOM.exec(id);
+  if (!m || !isSheetName(m[1])) return undefined;
+  const [sheet, sx, sy, w, h] = [m[1], Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+  const size = SHEETS[sheet];
+  if (w < 1 || h < 1 || w > MAX_CUSTOM_SIDE || h > MAX_CUSTOM_SIDE) return undefined;
+  if (sx + w > size.cols || sy + h > size.rows) return undefined;
+  return {
+    id,
+    name: "Custom piece",
+    sheet,
+    sx,
+    sy,
+    w,
+    h,
+    block: m[6] === "1" ? { x: 0, y: 0, w, h } : undefined,
+  };
+}
 
 export interface TileRect {
   col: number;
@@ -21,7 +66,7 @@ export interface FurnitureItem {
   id: string;
   name: string;
   /** The tileset image (and texture) the picture comes from. */
-  sheet: "generic" | "conference";
+  sheet: SheetName;
   /** Top-left tile of the picture in the sheet, and its size in tiles. */
   sx: number;
   sy: number;
@@ -134,7 +179,7 @@ export const FURNITURE: readonly FurnitureItem[] = [
 ];
 
 export const findFurniture = (id: string): FurnitureItem | undefined =>
-  FURNITURE.find((item) => item.id === id);
+  FURNITURE.find((item) => item.id === id) ?? parseCustom(id);
 
 /** A piece in the space: which item, and the tile of its top-left corner. */
 export interface PlacedFurniture {
@@ -154,8 +199,8 @@ export interface RemoveFurniturePayload {
   id: string;
 }
 
-/** Owners and admins decorate. */
-export const canDecorate = (role: SpaceRole) => role === "owner" || role === "admin";
+/** Every member decorates, but emptying the whole space (the template's pieces too) is for owners and admins. */
+export const canEmptySpace = (role: SpaceRole) => role === "owner" || role === "admin";
 
 /** The whole picture of an item placed at (col, row). */
 export const fullRect = (item: FurnitureItem, col: number, row: number): TileRect => ({
