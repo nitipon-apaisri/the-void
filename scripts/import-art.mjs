@@ -198,7 +198,6 @@ const stampDesk = (x, y) => {
   tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
   stamp(objects, "generic", 0, 5, 4, 3, x, y);
   block(x + 1, y, 2, 3);
-  block(x + 1, y + 3);
   seats.push({
     x: (x + 1) * TILE + TILE / 2,
     y: (y + 3) * TILE + TILE - SEAT_LIFT,
@@ -220,7 +219,9 @@ const meeting = (x, y, board = true) => {
   block(x + 1, y + 2, 3, 3);
   for (const cy of [y, y + 6])
     for (const cx of [x, x + 2, x + 4]) {
-      stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
+      // Far-side chairs face up, so they show their back.
+      if (cy === y) stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
+      else stamp(objects, "conference", 12, 7, 1, 1, cx, cy);
       block(cx, cy);
       // Chairs on the near side of the table face down towards it, the far side face up.
       seats.push({

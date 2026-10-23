@@ -1068,8 +1068,7 @@ export class WorldScene extends Phaser.Scene {
     this.voice?.setNearby(sortByDistance(me, others, this.nearby));
   }
 
-  // Chairs on the map's "seats" layer. A desk chair is drawn here (lifted so it tucks under the
-  // desk); the others are tiles in the map.
+  // Places to sit, from the map's "seats" layer. Desk chairs have no art; the others are tiles.
   private setUpSeats(map: Phaser.Tilemaps.Tilemap) {
     this.seats = [];
     for (const o of map.getObjectLayer(SEATS_LAYER)?.objects ?? []) {
@@ -1085,18 +1084,6 @@ export class WorldScene extends Phaser.Scene {
         ...(typeof art === "string" ? { art } : {}),
       };
       this.seats.push(seat);
-      const item = typeof art === "string" ? findFurniture(art) : undefined;
-      if (item) {
-        this.add
-          .image(
-            seat.x - TILE_SIZE / 2,
-            seat.y - TILE_SIZE,
-            item.sheet,
-            this.furnitureFrame(item, "full"),
-          )
-          .setOrigin(0)
-          .setDepth(4);
-      }
     }
   }
 
