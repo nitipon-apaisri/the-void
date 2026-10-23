@@ -6,10 +6,13 @@ import {
   createGrid,
   MAP_COLS,
   MAP_ROWS,
+  isSeatFacing,
+  SEATS_LAYER,
   TABLES_LAYER,
   TILE_SIZE,
   type CollisionGrid,
   type MapTable,
+  type Seat,
 } from "@void/shared";
 
 interface TiledLayer {
@@ -73,4 +76,33 @@ export function parseTables(tmj: unknown): MapTable[] {
 
 export function loadTables(file: string | URL): MapTable[] {
   return parseTables(JSON.parse(readFileSync(file, "utf8")));
+}
+
+/** The chairs on the map's "seats" layer. Ids start with "s" so they never match a piece's "f" id. */
+export function parseSeats(tmj: unknown): Seat[] {
+  const layers = (tmj as { layers?: unknown })?.layers;
+  const layer = (Array.isArray(layers) ? (layers as TiledLayer[]) : []).find(
+    (l) => l.name === SEATS_LAYER,
+  );
+  const objects = Array.isArray((layer as { objects?: unknown })?.objects)
+    ? ((layer as { objects: unknown[] }).objects as Record<string, unknown>[])
+    : [];
+  const seats: Seat[] = [];
+  for (const o of objects) {
+    const { id, x, y, properties } = o;
+    if (typeof id !== "number" || !Number.isInteger(id)) continue;
+    if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x + y)) continue;
+    const props = Array.isArray(properties)
+      ? (properties as { name?: unknown; value?: unknown }[])
+      : [];
+    const facing = props.find((p) => p.name === "facing")?.value;
+    const art = props.find((p) => p.name === "art")?.value;
+    if (!isSeatFacing(facing)) continue;
+    seats.push({ id: `s${id}`, x, y, facing, ...(typeof art === "string" ? { art } : {}) });
+  }
+  return seats;
+}
+
+export function loadSeats(file: string | URL): Seat[] {
+  return parseSeats(JSON.parse(readFileSync(file, "utf8")));
 }

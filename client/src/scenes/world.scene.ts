@@ -5,7 +5,13 @@ import Phaser from "phaser";
 import {
   SPAWN,
   TILE_SIZE,
+  SEATS_LAYER,
+  SIT_RANGE,
   TABLES_LAYER,
+  furnitureSeats,
+  isSeatFacing,
+  nearestFreeSeat,
+  type Seat,
   canDecorate,
   findFurniture,
   fullRect,
@@ -143,6 +149,16 @@ export class WorldScene extends Phaser.Scene {
   private ghost?: Phaser.GameObjects.Image;
   private ghostSpot?: { col: number; row: number };
   private hoverBox?: Phaser.GameObjects.Rectangle;
+  private seats: Seat[] = [];
+  // Seat id by session, from room state, to know which seats are taken.
+  private readonly seatOf = new Map<string, string>();
+  private mySeat?: Seat;
+  private standing = false;
+  private sitPending = false;
+  // After standing up, the seat you left stays off until you walk away from it, so you are not
+  // sat straight back down.
+  private suppressSeat?: Seat;
+  private lastMoveAt = 0;
   private waveButton?: WaveButton;
   private waveTarget?: string;
   // True while the route came from "go to a person": that is quicker than walking.
@@ -183,6 +199,7 @@ export class WorldScene extends Phaser.Scene {
     );
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
+    this.setUpSeats(map);
     this.baseBlocked = [...this.grid.blocked];
     this.decorate = createDecoratePanel({
       onToggle: (open) => {
@@ -468,6 +485,12 @@ export class WorldScene extends Phaser.Scene {
   private goToUser(userId: string) {
     const me = this.me;
     if (!me) return;
+    if (this.mySeat) {
+      void this.standUp().then(() => {
+        if (!this.mySeat) this.goToUser(userId);
+      });
+      return;
+    }
     for (const [sessionId, id] of this.accounts) {
       const sprite = id === userId ? this.others.get(sessionId) : undefined;
       if (!sprite) continue;
@@ -914,7 +937,10 @@ export class WorldScene extends Phaser.Scene {
           this.route = [];
           return;
         }
-        this.others.set(p.id, this.spawnPlayer(p.x, p.y, p.name, p.look));
+        const sprite = this.spawnPlayer(p.x, p.y, p.name, p.look);
+        sprite.setSeated(p.seat ? p.facing : undefined);
+        if (p.seat) this.seatOf.set(p.id, p.seat);
+        this.others.set(p.id, sprite);
         this.accounts.set(p.id, p.userId);
         this.refreshOnline();
         // Someone who joined the space after we loaded the list.
@@ -927,8 +953,13 @@ export class WorldScene extends Phaser.Scene {
         this.unsent = false;
       });
       connection.onPlayerMove((p) => {
+        if (p.seat) this.seatOf.set(p.id, p.seat);
+        else this.seatOf.delete(p.id);
+        // The room stood us up (the chair was removed): forget the seat here too.
+        if (p.id === connection.sessionId && this.mySeat && !p.seat) this.leaveSeat();
         const sprite = this.others.get(p.id);
         if (!sprite) return;
+        sprite.setSeated(p.seat ? p.facing : undefined);
         sprite.setProfile(p.name, p.look);
         const dx = p.x - sprite.x;
         const dy = p.y - sprite.y;
@@ -957,6 +988,8 @@ export class WorldScene extends Phaser.Scene {
         this.toast.show("Back online", "success", 2500);
       });
       connection.onDisconnect(() => {
+        this.seatOf.clear();
+        this.leaveSeat();
         this.connection = undefined;
         void this.stopVoice();
         [...this.others.keys()].forEach((id) => this.removeOther(id));
@@ -1035,6 +1068,98 @@ export class WorldScene extends Phaser.Scene {
     this.voice?.setNearby(sortByDistance(me, others, this.nearby));
   }
 
+  // Chairs on the map's "seats" layer. A desk chair is drawn here (lifted so it tucks under the
+  // desk); the others are tiles in the map.
+  private setUpSeats(map: Phaser.Tilemaps.Tilemap) {
+    this.seats = [];
+    for (const o of map.getObjectLayer(SEATS_LAYER)?.objects ?? []) {
+      const props = (o.properties ?? []) as { name: string; value: unknown }[];
+      const facing = props.find((p) => p.name === "facing")?.value;
+      const art = props.find((p) => p.name === "art")?.value;
+      if (!isSeatFacing(facing) || o.x === undefined || o.y === undefined) continue;
+      const seat: Seat = {
+        id: `s${o.id}`,
+        x: o.x,
+        y: o.y,
+        facing,
+        ...(typeof art === "string" ? { art } : {}),
+      };
+      this.seats.push(seat);
+      const item = typeof art === "string" ? findFurniture(art) : undefined;
+      if (item) {
+        this.add
+          .image(
+            seat.x - TILE_SIZE / 2,
+            seat.y - TILE_SIZE,
+            item.sheet,
+            this.furnitureFrame(item, "full"),
+          )
+          .setOrigin(0)
+          .setDepth(4);
+      }
+    }
+  }
+
+  private allSeats() {
+    return [...this.seats, ...furnitureSeats(this.pieces.values())];
+  }
+
+  private autoSit(me: Position) {
+    if (this.mySeat) return;
+    const suppressed = this.suppressSeat;
+    if (suppressed && Math.hypot(suppressed.x - me.x, suppressed.y - me.y) > SIT_RANGE + 8) {
+      this.suppressSeat = undefined;
+    }
+    const free = nearestFreeSeat(this.allSeats(), new Set(this.seatOf.values()), me);
+    // Coming to rest next to a free chair sits you down. Walking past one does not.
+    const resting = this.route.length === 0 && this.time.now - this.lastMoveAt > 350;
+    if (free && resting && free.id !== this.suppressSeat?.id) void this.sitDown();
+  }
+
+  private leaveSeat() {
+    this.mySeat = undefined;
+    this.me?.setSeated(undefined);
+    this.lastTablePrompt = 0;
+  }
+
+  private async sitDown() {
+    const { connection, me } = this;
+    if (!connection || !me || this.mySeat || this.sitPending) return;
+    const seat = nearestFreeSeat(this.allSeats(), new Set(this.seatOf.values()), me);
+    if (!seat) return;
+    this.sitPending = true;
+    try {
+      await connection.sit(seat.id);
+      this.route = [];
+      this.mySeat = seat;
+      me.setSeated(seat.facing);
+      this.followMe();
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not sit there", "error", 2500);
+      // Do not retry the same seat every tick.
+      this.suppressSeat = seat;
+    } finally {
+      this.sitPending = false;
+    }
+  }
+
+  // Resolves once the room has put us back on our feet (it sends our new position).
+  private async standUp() {
+    const { connection } = this;
+    if (!connection || !this.mySeat || this.standing) return;
+    this.standing = true;
+    const left = this.mySeat;
+    try {
+      await connection.stand();
+      this.suppressSeat = left;
+      this.leaveSeat();
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not stand up", "error", 2500);
+    } finally {
+      this.standing = false;
+    }
+  }
+
   private removeOther(id: string) {
     this.others.get(id)?.destroy();
     this.others.delete(id);
@@ -1078,6 +1203,12 @@ export class WorldScene extends Phaser.Scene {
   private walkToPoint(point: Position) {
     const me = this.me;
     if (!me) return;
+    if (this.mySeat) {
+      void this.standUp().then(() => {
+        if (!this.mySeat) this.walkToPoint(point);
+      });
+      return;
+    }
     this.followMe();
     const route = findPath(this.grid, me, point, PLAYER_RADIUS);
     if (route.length === 0) return;
@@ -1129,6 +1260,12 @@ export class WorldScene extends Phaser.Scene {
       },
       this.settings.keys,
     );
+    if (this.mySeat) {
+      // Seated: any movement key stands us up first, and nothing walks until then.
+      if (dir.dx || dir.dy) void this.standUp();
+      dir.dx = dir.dy = 0;
+      this.route = [];
+    }
     const speed = this.running && this.route.length > 0 ? PLAYER_RUN_SPEED : PLAYER_SPEED;
     // Pressing a movement key takes over from a click.
     if (dir.dx || dir.dy) {
@@ -1146,6 +1283,7 @@ export class WorldScene extends Phaser.Scene {
       if (next.x !== me.x || next.y !== me.y) {
         me.step(dir.dx, dir.dy);
         me.setPosition(next.x, next.y);
+        this.lastMoveAt = time;
         this.unsent = true;
       } else {
         // Something is in the way (another wall edge or a bad route): stop instead of pushing.
@@ -1168,6 +1306,7 @@ export class WorldScene extends Phaser.Scene {
       this.lastTablePrompt = time;
       this.refreshTablePrompt(me);
       this.refreshWave(me);
+      this.autoSit(me);
     }
 
     if (this.voice && time - this.lastProximity > PROXIMITY_CHECK_MS) {

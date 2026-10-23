@@ -19,8 +19,8 @@ import { drawLayers, loadLookImages } from "../utils/look-render";
 // Only the idle and walk rows (1 and 2), 24 frames wide, are used; row 0 stays empty so the
 // frame numbers match the layout in character-frames.ts.
 const USED_COLUMNS = 24;
-const USED_ROWS = 3;
-const FRAME_RATE: Record<CharacterState, number> = { idle: 6, walk: 10 };
+const USED_ROWS = 6;
+const FRAME_RATE: Record<CharacterState, number> = { idle: 6, walk: 10, sit: 6 };
 
 export const animationKey = (textureKey: string, state: CharacterState, facing: Facing) =>
   `${textureKey}:${state}:${facing}`;
@@ -67,7 +67,7 @@ async function build(scene: Phaser.Scene, key: string, look: Look): Promise<stri
   }
   texture.refresh();
 
-  for (const state of ["idle", "walk"] as const) {
+  for (const state of ["idle", "walk", "sit"] as const) {
     for (const facing of FACINGS) {
       scene.anims.create({
         key: animationKey(key, state, facing),

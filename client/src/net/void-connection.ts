@@ -10,6 +10,7 @@ import {
   type ClaimTablePayload,
   type JoinOptions,
   type PlacedFurniture,
+  type SitPayload,
   type PlaceFurniturePayload,
   type RemoveFurniturePayload,
   type WavedPayload,
@@ -30,6 +31,9 @@ export interface PlayerSnapshot extends Position {
   userId: string;
   name: string;
   look: Look;
+  /** The seat they are on ("" when standing) and the way they face there. */
+  seat: string;
+  facing: string;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -48,6 +52,9 @@ export interface VoidConnection {
   removeFurniture(id: string): Promise<void>;
   /** Fires with every placed piece whenever one is added or removed. */
   onFurniture(cb: (pieces: PlacedFurniture[]) => void): void;
+  /** Sit on a seat within reach; the room snaps us onto it. Rejects with its reason. */
+  sit(seatId: string): Promise<void>;
+  stand(): Promise<void>;
   /** Wave at a player by session id; the room ignores it if they are too far or we waved just now. */
   wave(targetId: string): void;
   /** A wave happened that involves us, as the waver or the target. */
@@ -92,6 +99,8 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     look: decodeLook(p.look) ?? DEFAULT_LOOK,
     x: p.x,
     y: p.y,
+    seat: p.seat,
+    facing: p.facing,
   });
 
   return {
@@ -139,6 +148,12 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
         pieces.delete(id);
         emit();
       });
+    },
+    sit: async (seatId) => {
+      await room.request(MESSAGES.SIT, { seatId } satisfies SitPayload);
+    },
+    stand: async () => {
+      await room.request(MESSAGES.STAND);
     },
     wave: (targetId) => room.send(MESSAGES.WAVE, { targetId }),
     onWaved: (cb) => room.onMessage(MESSAGES.WAVED, cb),

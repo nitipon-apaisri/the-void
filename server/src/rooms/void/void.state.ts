@@ -7,6 +7,9 @@ export class Player extends Schema {
   @type("string") look = "";
   @type("number") x = 0;
   @type("number") y = 0;
+  // The seat this player sits on ("" when standing) and the way they face there.
+  @type("string") seat = "";
+  @type("string") facing = "";
 }
 
 export class TableClaim extends Schema {

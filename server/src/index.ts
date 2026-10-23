@@ -17,7 +17,7 @@ import { mountAuthRoutes } from "./routes/auth.routes.js";
 import { mountInviteRoutes } from "./routes/invite.routes.js";
 import { mountSpaceRoutes } from "./routes/space.routes.js";
 import { createAuthService } from "./services/auth.service.js";
-import { loadCollisionGrid, loadTables } from "./services/map.service.js";
+import { loadCollisionGrid, loadSeats, loadTables } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
 import { createInviteService } from "./services/invite.service.js";
 import { createSpaceService } from "./services/space.service.js";
@@ -39,6 +39,7 @@ const inviteService = createInviteService(createInviteRepository(pool), spaces);
 // Read once: the map is shared by every space for now, and a bad file should stop the start.
 const grid = loadCollisionGrid(env.mapFile);
 const tables = loadTables(env.mapFile);
+const seats = loadSeats(env.mapFile);
 const claims = createTableRepository(pool);
 const furniture = createFurnitureRepository(pool);
 
@@ -69,6 +70,7 @@ gameServer
     spaces,
     grid,
     tables,
+    seats,
     claims,
     furniture,
   })

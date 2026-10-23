@@ -1,4 +1,5 @@
 import type { SpaceRole } from "./index.js";
+import type { SeatFacing } from "./seat.js";
 
 // Decoration. Owners and admins place furniture from this catalogue on a tile grid; the room
 // keeps the placed pieces (saved per space) and refuses a spot that is a wall, another piece,
@@ -28,6 +29,8 @@ export interface FurnitureItem {
   h: number;
   /** The tiles that block movement, relative to the top-left. Absent: you can walk over it. */
   block?: { x: number; y: number; w: number; h: number };
+  /** Where you sit, in pixels from the top-left, and which way you face. Absent: not a seat. */
+  seat?: { x: number; y: number; facing: SeatFacing };
   /** The top this many rows are drawn over players, so you can walk behind tall things. */
   over?: number;
 }
@@ -52,6 +55,7 @@ export const FURNITURE: readonly FurnitureItem[] = [
     w: 1,
     h: 1,
     block: { x: 0, y: 0, w: 1, h: 1 },
+    seat: { x: 16, y: 20, facing: "down" },
   },
   {
     id: "desk",
@@ -72,6 +76,7 @@ export const FURNITURE: readonly FurnitureItem[] = [
     w: 1,
     h: 2,
     block: { x: 0, y: 0, w: 1, h: 1 },
+    seat: { x: 16, y: 24, facing: "up" },
   },
   { id: "rug", name: "Rug", sheet: "generic", sx: 9, sy: 4, w: 4, h: 3 },
   {

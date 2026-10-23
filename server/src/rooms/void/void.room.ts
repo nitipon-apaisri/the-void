@@ -16,7 +16,11 @@ import {
   type CollisionGrid,
   type JoinOptions,
   type Look,
+  furnitureSeats,
+  nearestFreeSeat,
   type MapTable,
+  type Position,
+  type Seat,
   type WavedPayload,
   type SpaceRole,
 } from "@void/shared";
@@ -29,6 +33,7 @@ import type { AuthService } from "../../services/auth.service.js";
 import type { VoiceTokenService } from "../../services/voice-token.service.js";
 import { resolveSpawn } from "./handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
+import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
@@ -40,6 +45,7 @@ interface VoidRoomOptions {
   spaces: SpaceRepository;
   grid: CollisionGrid;
   tables: MapTable[];
+  seats: Seat[];
   claims: TableRepository;
   furniture: FurnitureRepository;
   voiceTokens?: VoiceTokenService;
@@ -66,6 +72,8 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private grid!: CollisionGrid;
   private readonly lastRefresh = new Map<string, number>();
   private readonly budgets = new Map<string, MoveBudget>();
+  // Who sits where, and where they stood before, so standing up can put them back.
+  private readonly seated = new Map<string, { seat: Seat; before: Position }>();
   private readonly lastWave = new Map<string, number>();
 
   async onCreate(options: VoidRoomOptions & Partial<JoinOptions>) {
@@ -129,6 +137,25 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       client.send(MESSAGES.WAVED, waved);
       this.clients.getById(request.targetId)?.send(MESSAGES.WAVED, waved);
     });
+    this.onMessage(MESSAGES.SIT, (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const request = parseSit(payload);
+      if (!player || !request) throw new Error("invalid request");
+      if (this.seated.has(client.sessionId)) throw new Error("you are already sitting");
+      const seat = this.allSeats().find((s) => s.id === request.seatId);
+      if (!seat) throw new Error("that seat does not exist");
+      const taken = new Set([...this.seated.values()].map((s) => s.seat.id));
+      if (taken.has(seat.id)) throw new Error("someone is sitting there");
+      // The same reach rule the client uses to offer the seat.
+      if (nearestFreeSeat([seat], taken, player)?.id !== seat.id) throw new Error("move closer");
+      this.seated.set(client.sessionId, { seat, before: { x: player.x, y: player.y } });
+      this.place(client, player, seat, seat);
+      return true;
+    });
+    this.onMessage(MESSAGES.STAND, (client) => {
+      this.standUp(client.sessionId, client);
+      return true;
+    });
     this.onMessage(MESSAGES.PLACE_FURNITURE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parsePlace(payload);
@@ -159,6 +186,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const piece = request && this.state.furniture.get(request.id);
       if (!request || !piece) throw new Error("that piece is gone");
       await options.furniture.remove(this.spaceId, request.id);
+      // Whoever sits on a chair that goes away is put back on their feet.
+      for (const [sessionId, { seat }] of this.seated) {
+        if (seat.id === `f${request.id}`) this.standUp(sessionId);
+      }
       const item = findFurniture(piece.itemId);
       if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
       this.state.furniture.delete(request.id);
@@ -194,6 +225,11 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const budget = this.budgets.get(client.sessionId);
       const pos = parseMove(payload);
       if (!player || !budget || !pos) return;
+      if (this.seated.has(client.sessionId)) {
+        // Sitting: the client should have asked to stand first; keep it where it is.
+        client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
+        return;
+      }
       if (!acceptMove(this.grid, budget, player, pos, Date.now())) {
         // Walls and walking speed are the server's call: put the client back where we have them.
         client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
@@ -202,6 +238,35 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       player.x = pos.x;
       player.y = pos.y;
     });
+  }
+
+  private allSeats(): Seat[] {
+    const pieces = [...this.state.furniture.entries()].map(([id, f]) => ({
+      id,
+      itemId: f.itemId,
+      col: f.col,
+      row: f.row,
+    }));
+    return [...this.options.seats, ...furnitureSeats(pieces)];
+  }
+
+  // Moves a player (onto a seat, or off it) and tells their own client, which would otherwise
+  // keep its old position.
+  private place(client: Client | undefined, player: Player, spot: Position, seat?: Seat) {
+    player.x = spot.x;
+    player.y = spot.y;
+    player.seat = seat?.id ?? "";
+    player.facing = seat?.facing ?? "";
+    client?.send(MESSAGES.SNAP, { x: spot.x, y: spot.y });
+  }
+
+  private standUp(sessionId: string, client?: Client) {
+    const sitting = this.seated.get(sessionId);
+    const player = this.state.players.get(sessionId);
+    if (!sitting || !player) return;
+    this.seated.delete(sessionId);
+    const target = client ?? this.clients.getById(sessionId);
+    this.place(target, player, pickStandSpot(this.grid, sitting.seat, sitting.before));
   }
 
   private placementError(
@@ -267,6 +332,12 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.state.players.delete(client.sessionId);
     this.lastRefresh.delete(client.sessionId);
     this.budgets.delete(client.sessionId);
+    // Save where they would stand, not the chair (which is inside a wall as far as spawning goes).
+    const sat = this.seated.get(client.sessionId);
+    if (sat && player) {
+      Object.assign(player, pickStandSpot(this.grid, sat.seat, sat.before));
+      this.seated.delete(client.sessionId);
+    }
     this.lastWave.delete(client.sessionId);
     if (!player || !client.auth) return;
     try {

@@ -1,5 +1,6 @@
 export const ROOM_NAME = "void";
 export * from "./furniture.js";
+export * from "./seat.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
@@ -135,6 +136,9 @@ export const MESSAGES = {
   // Request/response, owners and admins only: place a piece of furniture, or take one away.
   PLACE_FURNITURE: "place-furniture",
   REMOVE_FURNITURE: "remove-furniture",
+  // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
+  SIT: "sit",
+  STAND: "stand",
 } as const;
 
 export interface VoiceToken {

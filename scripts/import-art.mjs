@@ -190,12 +190,21 @@ const vwall = (x, y0, y1) => {
 // Every desk is a claimable table (see TABLES_LAYER in @void/shared). The rectangle includes
 // the chair, so you claim it from where you sit.
 const tables = [];
+// Places you can sit (the SEATS_LAYER in @void/shared): a point in pixels and the way you face.
+// A desk chair is drawn by the client, lifted so it tucks under the desk, so it has no tiles.
+const seats = [];
+const SEAT_LIFT = 28;
 const stampDesk = (x, y) => {
   tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
   stamp(objects, "generic", 0, 5, 4, 3, x, y);
   block(x + 1, y, 2, 3);
-  stamp(objects, "generic", 2, 11, 1, 2, x + 1, y + 3);
   block(x + 1, y + 3);
+  seats.push({
+    x: (x + 1) * TILE + TILE / 2,
+    y: (y + 3) * TILE + TILE - SEAT_LIFT,
+    facing: "up",
+    art: "desk-chair",
+  });
 };
 // A sofa, table, TV and sideboard; 11 wide and 5 tall.
 const lounge = (x, y) => {
@@ -213,6 +222,12 @@ const meeting = (x, y, board = true) => {
     for (const cx of [x, x + 2, x + 4]) {
       stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
       block(cx, cy);
+      // Chairs on the near side of the table face down towards it, the far side face up.
+      seats.push({
+        x: cx * TILE + TILE / 2,
+        y: cy * TILE + TILE / 2 + 4,
+        facing: cy === y ? "down" : "up",
+      });
     }
   if (board) {
     stamp(objects, "conference", 10, 1, 2, 2, x + 2, y - 4);
@@ -333,8 +348,8 @@ const map = {
   type: "map",
   version: "1.10",
   tiledversion: "1.10.2",
-  nextlayerid: 7,
-  nextobjectid: tables.length + 1,
+  nextlayerid: 8,
+  nextobjectid: tables.length + seats.length + 1,
   width: COLS,
   height: ROWS,
   tilewidth: TILE,
@@ -361,6 +376,31 @@ const map = {
         rotation: 0,
         visible: true,
         ...t,
+      })),
+    },
+    {
+      id: 7,
+      name: "seats",
+      type: "objectgroup",
+      draworder: "topdown",
+      opacity: 1,
+      visible: false,
+      x: 0,
+      y: 0,
+      objects: seats.map((s, i) => ({
+        id: tables.length + i + 1,
+        name: `Seat ${i + 1}`,
+        type: "seat",
+        rotation: 0,
+        visible: true,
+        width: 0,
+        height: 0,
+        x: s.x,
+        y: s.y,
+        properties: [
+          { name: "facing", type: "string", value: s.facing },
+          ...(s.art ? [{ name: "art", type: "string", value: s.art }] : []),
+        ],
       })),
     },
   ],

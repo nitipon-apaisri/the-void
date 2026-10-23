@@ -8,7 +8,7 @@ import { encodeLook, type Look } from "@void/shared";
 import { PLAYER_RADIUS } from "../config/env";
 
 // systems
-import { FRAME, facingFor, type Facing } from "../systems/character-frames";
+import { FACINGS, FRAME, facingFor, type Facing } from "../systems/character-frames";
 
 // objects
 import { animationKey, ensureLookTexture } from "./look-textures";
@@ -27,6 +27,7 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   private loadId = 0;
   private facing: Facing = "down";
   private moving = false;
+  private seated = false;
   private lastStep = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, name: string, look: Look) {
@@ -85,8 +86,20 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     this.label.setVisible(visible);
   }
 
+  /** Sits down facing the given way, or stands up (undefined or an unknown facing). */
+  setSeated(facing: string | undefined) {
+    const known = FACINGS.find((f) => f === facing);
+    this.seated = known !== undefined;
+    if (known) this.facing = known;
+    // A back view has no sitting pose: sit it a little lower so it reads as sitting.
+    this.sprite.y = PLAYER_RADIUS + (known === "up" ? 6 : 0);
+    this.moving = false;
+    this.play();
+  }
+
   /** Call whenever this player takes a step; (dx, dy) says which way. */
   step(dx: number, dy: number) {
+    if (this.seated) return;
     this.lastStep = this.scene.time.now;
     const facing = facingFor(dx, dy, this.facing);
     if (this.moving && facing === this.facing) return;
@@ -106,7 +119,11 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   private play() {
     if (!this.textureKey) return;
     this.sprite.play(
-      animationKey(this.textureKey, this.moving ? "walk" : "idle", this.facing),
+      animationKey(
+        this.textureKey,
+        this.seated ? "sit" : this.moving ? "walk" : "idle",
+        this.facing,
+      ),
       true,
     );
   }
