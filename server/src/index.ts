@@ -7,14 +7,17 @@ import { ROOM_NAME } from "@void/shared";
 
 import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
+import { createInviteRepository } from "./repositories/invite.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
 import { createUserRepository } from "./repositories/user.repository.js";
 import { VoidRoom } from "./rooms/void/void.room.js";
 import { mountAuthRoutes } from "./routes/auth.routes.js";
+import { mountInviteRoutes } from "./routes/invite.routes.js";
 import { mountSpaceRoutes } from "./routes/space.routes.js";
 import { createAuthService } from "./services/auth.service.js";
 import { loadCollisionGrid } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
+import { createInviteService } from "./services/invite.service.js";
 import { createSpaceService } from "./services/space.service.js";
 import { createPasswordService } from "./services/password.service.js";
 import { createTokenService } from "./services/token.service.js";
@@ -30,6 +33,7 @@ const auth = createAuthService({
 
 const spaces = createSpaceRepository(pool);
 const spaceService = createSpaceService(spaces);
+const inviteService = createInviteService(createInviteRepository(pool), spaces);
 // Read once: the map is shared by every space for now, and a bad file should stop the start.
 const grid = loadCollisionGrid(env.mapFile);
 
@@ -46,7 +50,9 @@ const gameServer = new Server({
       corsOrigins: env.corsOrigins,
       trustProxyHops: env.trustProxyHops,
     });
-    mountSpaceRoutes(app, { auth, spaces: spaceService, corsOrigins: env.corsOrigins });
+    const routeOptions = { auth, corsOrigins: env.corsOrigins };
+    mountSpaceRoutes(app, { ...routeOptions, spaces: spaceService, invites: inviteService });
+    mountInviteRoutes(app, { ...routeOptions, invites: inviteService });
   },
 });
 // One room per space: players with the same `spaceId` option land in the same room.

@@ -22,8 +22,8 @@ import {
 import path from "node:path";
 
 const TILE = 32;
-const COLS = 40;
-const ROWS = 30;
+const COLS = 90;
+const ROWS = 67;
 
 const root = new URL("../client/src/assets/", import.meta.url);
 const args = process.argv.slice(2);
@@ -180,50 +180,133 @@ const vwall = (x, y0, y1) => {
   }
 };
 
-// Rooms
-carpet("floors", 1, 5, 1, 2, 19, 27); // open office: light grey carpet
-carpet("floors", 1, 13, 21, 2, 38, 27); // right side: wood
-carpet("floors", 1, 13, 20, 13, 20, 15); // the doorway floor
+// ---- the floor plan ----
+// A 3 x 3 grid of rooms (about 30 x 20 tiles each) with doorways between them:
+//   open office | open office | meeting rooms
+//   lounge      | plaza       | open office
+//   cafeteria   | event lounge| open office
+// Walls sit on x = 30 and 60 and on rows 22-23 and 44-45; the gaps in them are the doors.
 
-hwall(0, 39, 0);
-hwall(0, 39, 28);
-vwall(0, 2, 27);
-vwall(39, 2, 27);
-for (const [y0, y1] of [
-  [2, 12],
-  [16, 27],
+const stampDesk = (x, y) => {
+  stamp(objects, "generic", 0, 5, 4, 3, x, y);
+  block(x + 1, y, 2, 3);
+  stamp(objects, "generic", 2, 11, 1, 2, x + 1, y + 3);
+  block(x + 1, y + 3);
+};
+// A sofa, table, TV and sideboard; 11 wide and 5 tall.
+const lounge = (x, y) => {
+  stamp(decor, "generic", 9, 4, 4, 3, x, y);
+  stamp(objects, "generic", 6, 11, 3, 2, x + 1, y + 3);
+  block(x + 1, y + 3, 3, 1);
+  tall("generic", 6, 0, 1, 3, x + 6, y);
+  tall("generic", 0, 11, 2, 2, x + 9, y + 2);
+};
+// A table with six chairs; 5 wide and 7 tall, plus a whiteboard 4 rows above when it has one.
+const meeting = (x, y, board = true) => {
+  stamp(objects, "conference", 0, 1, 5, 3, x, y + 2);
+  block(x + 1, y + 2, 3, 3);
+  for (const cy of [y, y + 6])
+    for (const cx of [x, x + 2, x + 4]) {
+      stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
+      block(cx, cy);
+    }
+  if (board) {
+    stamp(objects, "conference", 10, 1, 2, 2, x + 2, y - 4);
+    block(x + 2, y - 4, 2, 2);
+  }
+};
+const plant = (x, y) => {
+  stamp(objects, "conference", 13, 7, 1, 1, x, y);
+  block(x, y);
+};
+const desks = (xs, ys) => ys.forEach((y) => xs.forEach((x) => stampDesk(x, y)));
+
+// Floors: grey carpet everywhere, wood in the rooms people gather in.
+carpet("floors", 1, 5, 1, 2, COLS - 2, ROWS - 3);
+for (const [x0, y0, x1, y1] of [
+  [61, 2, 88, 21], // meeting rooms
+  [1, 24, 29, 43], // lounge
+  [1, 46, 29, 64], // cafeteria
+  [31, 46, 59, 64], // event lounge
 ])
-  vwall(20, y0, y1); // divider, door at rows 13-15
+  carpet("floors", 1, 13, x0, y0, x1, y1);
 
-// Open office: two rows of workstations
-for (const y of [5, 11])
-  for (const x of [3, 8, 13]) {
-    stamp(objects, "generic", 0, 5, 4, 3, x, y);
-    block(x + 1, y, 2, 3);
-    stamp(objects, "generic", 2, 11, 1, 2, x + 1, y + 3);
-    block(x + 1, y + 3);
-  }
-// Lounge corner
-stamp(decor, "generic", 9, 4, 4, 3, 3, 20);
-stamp(objects, "generic", 6, 11, 3, 2, 4, 23);
-block(4, 23, 3, 1);
+// Outer walls, then the dividers. Door gaps: columns 13-16, 43-46, 73-76 across the horizontal
+// walls, rows 10-12, 32-34, 54-56 through the vertical ones.
+hwall(0, COLS - 1, 0);
+hwall(0, COLS - 1, ROWS - 2);
+vwall(0, 2, ROWS - 3);
+vwall(COLS - 1, 2, ROWS - 3);
+for (const y of [22, 44])
+  for (const [x0, x1] of [
+    [0, 12],
+    [17, 42],
+    [47, 72],
+    [77, COLS - 1],
+  ])
+    hwall(x0, x1, y);
+for (const x of [30, 60])
+  for (const [y0, y1] of [
+    [2, 9],
+    [13, 21],
+    [24, 31],
+    [35, 43],
+    [46, 53],
+    [57, 64],
+  ])
+    vwall(x, y0, y1);
 
-// A TV on a stand and a sideboard in the lounge
-tall("generic", 6, 0, 1, 3, 9, 20);
-tall("generic", 0, 11, 2, 2, 12, 22);
+// Top row
+desks([3, 8, 13, 18, 23], [4, 10, 16]);
+desks([33, 38, 43, 48, 53], [4, 10, 16]);
+meeting(64, 6);
+meeting(76, 6);
+lounge(64, 15);
+for (const [x, y] of [
+  [62, 3],
+  [87, 3],
+  [62, 20],
+  [87, 20],
+])
+  plant(x, y);
 
-// Meeting room
-stamp(objects, "conference", 0, 1, 5, 3, 26, 8);
-block(27, 8, 3, 3);
-for (const y of [6, 12])
-  for (const x of [26, 28, 30]) {
-    stamp(objects, "conference", 11, 6, 1, 1, x, y);
-    block(x, y);
-  }
-stamp(objects, "conference", 10, 1, 2, 2, 28, 2);
-block(28, 2, 2, 2);
-stamp(objects, "conference", 13, 7, 1, 1, 37, 3);
-block(37, 3);
+// Middle row
+lounge(2, 26);
+lounge(18, 26);
+lounge(2, 35);
+lounge(18, 35);
+for (const [x, y] of [
+  [33, 26],
+  [53, 26],
+  [33, 36],
+  [53, 36],
+])
+  meeting(x, y, false);
+for (const [x, y] of [
+  [40, 27],
+  [50, 27],
+  [40, 39],
+  [50, 39],
+])
+  plant(x, y);
+desks([63, 68, 73, 78, 83], [26, 32, 38]);
+
+// Bottom row
+for (const [x, y] of [
+  [3, 48],
+  [18, 48],
+  [3, 57],
+  [18, 57],
+])
+  meeting(x, y, false);
+for (const [x, y] of [
+  [33, 48],
+  [47, 48],
+  [33, 57],
+  [47, 57],
+])
+  lounge(x, y);
+desks([63, 68, 73, 78, 83], [48, 54, 60]);
 
 const layer = (id, name, data) => ({
   id,

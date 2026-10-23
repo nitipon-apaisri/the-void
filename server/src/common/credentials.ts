@@ -2,6 +2,7 @@
 import {
   isLook,
   MAX_EMAIL_LENGTH,
+  MAX_INVITE_HOURS,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_SPACE_NAME_LENGTH,
@@ -10,6 +11,7 @@ import {
   type ChangePasswordPayload,
   type CreateSpacePayload,
   type DeleteAccountPayload,
+  type InviteOptions,
   type LoginPayload,
   type RegisterPayload,
   type UpdateProfilePayload,
@@ -115,4 +117,20 @@ export function parseSpace(body: unknown): Parsed<CreateSpacePayload> {
     return fail(`name must be 1 to ${MAX_SPACE_NAME_LENGTH} characters`);
   }
   return { ok: true, value: { name } };
+}
+
+export function parseInviteOptions(body: unknown): Parsed<InviteOptions> {
+  if (!isObject(body)) return fail("invalid request");
+  const { requiresApproval, expiresInHours } = body;
+  if (typeof requiresApproval !== "boolean") return fail("invalid request");
+  if (
+    expiresInHours !== null &&
+    (typeof expiresInHours !== "number" ||
+      !Number.isInteger(expiresInHours) ||
+      expiresInHours < 1 ||
+      expiresInHours > MAX_INVITE_HOURS)
+  ) {
+    return fail("invalid expiry");
+  }
+  return { ok: true, value: { requiresApproval, expiresInHours } };
 }

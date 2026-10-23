@@ -1,67 +1,92 @@
 // lib
-import express, { type Application, type Request, type Response } from "express";
+import express, { type Application } from "express";
 import { rateLimit } from "express-rate-limit";
 
 // shared
 import { SPACE_ROUTES, type ApiError } from "@void/shared";
 
 import { allowOrigins } from "../common/cors.js";
-import { parseSpace } from "../common/credentials.js";
+import { parseInviteOptions, parseSpace } from "../common/credentials.js";
 import { AuthError, type AuthService } from "../services/auth.service.js";
+import type { InviteService } from "../services/invite.service.js";
 import type { SpaceService } from "../services/space.service.js";
+import { respondAs } from "./http.js";
 
 interface Options {
   auth: AuthService;
   spaces: SpaceService;
+  invites: InviteService;
   corsOrigins: readonly string[];
 }
 
 const BODY_LIMIT = "1kb";
 
-const bearer = (req: Request) => req.header("authorization")?.match(/^Bearer (.+)$/)?.[1];
-
 /** Mounts the space endpoints. Every one needs a valid token; membership is checked per space. */
-export function mountSpaceRoutes(app: Application, { auth, spaces, corsOrigins }: Options) {
+export function mountSpaceRoutes(
+  app: Application,
+  { auth, spaces, invites, corsOrigins }: Options,
+) {
   app.use(SPACE_ROUTES.LIST, allowOrigins(corsOrigins));
 
-  const createLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    limit: 20,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-    message: { error: "too many spaces created, try again later" } satisfies ApiError,
-  });
+  const limiter = (limit: number, message: string) =>
+    rateLimit({
+      windowMs: 60 * 60 * 1000,
+      limit,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: { error: message } satisfies ApiError,
+    });
+  const createLimiter = limiter(20, "too many spaces created, try again later");
+  const inviteLimiter = limiter(60, "too many links created, try again later");
+  const json = express.json({ limit: BODY_LIMIT });
+  const space = (path: string) => `${SPACE_ROUTES.PREFIX}:spaceId${path}`;
 
-  const respond = async (
-    req: Request,
-    res: Response,
-    work: (userId: string) => Promise<unknown>,
-  ) => {
-    try {
-      const user = await auth.authenticate(bearer(req));
-      if (!user) throw new AuthError(401, "not signed in");
-      res.json(await work(user.id));
-    } catch (err) {
-      if (err instanceof AuthError) {
-        res.status(err.status).json({ error: err.message } satisfies ApiError);
-        return;
-      }
-      console.error("space request failed", err instanceof Error ? err.message : err);
-      res.status(500).json({ error: "something went wrong" } satisfies ApiError);
-    }
-  };
+  app.get(SPACE_ROUTES.LIST, (req, res) => respondAs(auth, req, res, (id) => spaces.listMine(id)));
 
-  app.get(SPACE_ROUTES.LIST, (req, res) => respond(req, res, (id) => spaces.listMine(id)));
-
-  app.post(SPACE_ROUTES.LIST, createLimiter, express.json({ limit: BODY_LIMIT }), (req, res) =>
-    respond(req, res, async (id) => {
+  app.post(SPACE_ROUTES.LIST, createLimiter, json, (req, res) =>
+    respondAs(auth, req, res, async (id) => {
       const parsed = parseSpace(req.body);
       if (!parsed.ok) throw new AuthError(400, parsed.error);
       return spaces.create(id, parsed.value);
     }),
   );
 
-  app.get(`${SPACE_ROUTES.PREFIX}:spaceId/members`, (req, res) =>
-    respond(req, res, (id) => spaces.members(id, String(req.params.spaceId))),
+  app.get(space("/members"), (req, res) =>
+    respondAs(auth, req, res, (id) => spaces.members(id, String(req.params.spaceId))),
   );
+
+  app.get(space("/invites"), (req, res) =>
+    respondAs(auth, req, res, (id) => invites.list(id, String(req.params.spaceId))),
+  );
+
+  app.post(space("/invites"), inviteLimiter, json, (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      const parsed = parseInviteOptions(req.body);
+      if (!parsed.ok) throw new AuthError(400, parsed.error);
+      return invites.create(id, String(req.params.spaceId), parsed.value);
+    }),
+  );
+
+  app.delete(space("/invites/:inviteId"), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await invites.revoke(id, String(req.params.spaceId), String(req.params.inviteId));
+      return {};
+    }),
+  );
+
+  app.get(space("/requests"), (req, res) =>
+    respondAs(auth, req, res, (id) => invites.requests(id, String(req.params.spaceId))),
+  );
+
+  for (const [action, approve] of [
+    ["approve", true],
+    ["deny", false],
+  ] as const) {
+    app.post(space(`/requests/:userId/${action}`), (req, res) =>
+      respondAs(auth, req, res, async (id) => {
+        await invites.decide(id, String(req.params.spaceId), String(req.params.userId), approve);
+        return {};
+      }),
+    );
+  }
 }

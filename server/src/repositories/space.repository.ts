@@ -25,6 +25,9 @@ export interface SpaceRepository {
   /** Everyone in the space, owner first. Offline or online is the room's business, not ours. */
   listMembers(spaceId: string): Promise<SpaceMember[]>;
   savePosition(spaceId: string, userId: string, x: number, y: number): Promise<void>;
+  /** Adds a plain member; does nothing if they already belong. */
+  addMember(spaceId: string, userId: string): Promise<void>;
+  findSummary(spaceId: string, userId: string): Promise<SpaceSummary | undefined>;
 }
 
 interface SummaryRow {
@@ -117,6 +120,24 @@ export function createSpaceRepository(db: Queryable): SpaceRepository {
         look: decodeLook(row.look) ?? DEFAULT_LOOK,
         role: row.role,
       }));
+    },
+
+    async addMember(spaceId, userId) {
+      await db.query(
+        `insert into t_space_members (space_id, user_id, role) values ($1, $2, 'member')
+         on conflict (space_id, user_id) where deleted_at is null do nothing`,
+        [spaceId, userId],
+      );
+    },
+
+    async findSummary(spaceId, userId) {
+      const { rows } = await db.query<SummaryRow>(
+        `select s.id, s.name, s.template, m.role
+         from t_space_members m join t_spaces s on s.id = m.space_id
+         where m.space_id = $1 and m.user_id = $2 and m.deleted_at is null and s.deleted_at is null`,
+        [spaceId, userId],
+      );
+      return rows[0] && toSummary(rows[0]);
     },
 
     async savePosition(spaceId, userId, x, y) {

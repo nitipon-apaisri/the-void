@@ -1,5 +1,5 @@
 // shared
-import type { SpaceMember } from "@void/shared";
+import type { JoinRequest, SpaceMember } from "@void/shared";
 
 // ui
 import { applyTheme } from "./theme";
@@ -11,6 +11,9 @@ export interface PeoplePanel {
   setMembers(members: readonly SpaceMember[]): void;
   /** Accounts that are in the room right now. */
   setOnline(userIds: ReadonlySet<string>): void;
+  /** Owners and admins see the Invite button and the people waiting to be let in. */
+  setCanManage(can: boolean): void;
+  setRequests(requests: readonly JoinRequest[]): void;
   toggle(): void;
   isOpen(): boolean;
   destroy(): void;
@@ -22,6 +25,9 @@ export interface PeoplePanelActions {
   /** The search box has focus, so the game must stop reading the keyboard. */
   onTyping(on: boolean): void;
   onToggle(open: boolean): void;
+  onInvite(): void;
+  /** Resolves when the server has recorded the decision. */
+  onDecide(userId: string, approve: boolean): Promise<void>;
 }
 
 const STYLE_ID = "void-people-style";
@@ -45,6 +51,17 @@ const STYLES = `
 .void-people__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .void-people__role { font-size: 11px; color: var(--v-muted); text-transform: capitalize; }
 .void-people__empty { margin: 8px 6px; color: var(--v-muted); }
+.void-people__invite { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+  color: var(--v-text); font: inherit; font-weight: 550; cursor: pointer; }
+.void-people__invite:hover { background: var(--v-hover); }
+.void-people__invite[hidden] { display: none; }
+.void-people__ask { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+.void-people__ask .void-people__name { flex: 1; }
+.void-people__ask button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+  color: var(--v-text); font: inherit; font-size: 12px; cursor: pointer; }
+.void-people__ask button:hover:not(:disabled) { background: var(--v-hover); }
+.void-people__ask button.yes { background: var(--v-accent); border-color: var(--v-accent); color: var(--v-accent-ink); font-weight: 650; }
+.void-people__ask button:disabled { opacity: 0.5; cursor: wait; }
 .void-people :focus-visible { outline: 2px solid var(--v-accent); outline-offset: 1px; }
 `;
 
@@ -64,11 +81,19 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
   search.maxLength = 40;
   const list = document.createElement("div");
   list.className = "void-people__list";
-  root.append(search, list);
+  const invite = document.createElement("button");
+  invite.type = "button";
+  invite.className = "void-people__invite";
+  invite.textContent = "Invite people";
+  invite.hidden = true;
+  invite.addEventListener("click", () => actions.onInvite());
+  root.append(invite, search, list);
   document.body.append(root);
 
   let members: readonly SpaceMember[] = [];
   let online: ReadonlySet<string> = new Set();
+  let requests: readonly JoinRequest[] = [];
+  let canManage = false;
 
   const row = (member: SpaceMember, isOnline: boolean) => {
     const button = document.createElement("button");
@@ -96,12 +121,46 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     return [heading, ...rows];
   };
 
+  const ask = (request: JoinRequest) => {
+    const line = document.createElement("div");
+    line.className = "void-people__ask";
+    const name = document.createElement("span");
+    name.className = "void-people__name";
+    name.textContent = request.name;
+    const decide = (approve: boolean) => async () => {
+      const buttons = line.querySelectorAll("button");
+      buttons.forEach((b) => (b.disabled = true));
+      try {
+        await actions.onDecide(request.userId, approve);
+      } catch {
+        // The caller shows the reason; let the admin try again.
+        buttons.forEach((b) => (b.disabled = false));
+      }
+    };
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "yes";
+    yes.textContent = "Let in";
+    yes.addEventListener("click", decide(true));
+    const no = document.createElement("button");
+    no.type = "button";
+    no.textContent = "Decline";
+    no.addEventListener("click", decide(false));
+    line.append(name, yes, no);
+    return line;
+  };
+
   const render = () => {
     const needle = search.value.trim().toLowerCase();
     const shown = members.filter((m) => !needle || m.name.toLowerCase().includes(needle));
     const on = shown.filter((m) => online.has(m.userId)).map((m) => row(m, true));
     const off = shown.filter((m) => !online.has(m.userId)).map((m) => row(m, false));
-    const nodes = [...section("Online", on), ...section("Offline", off)];
+    const waiting = canManage ? requests.map(ask) : [];
+    const nodes = [
+      ...section("Waiting to join", waiting),
+      ...section("Online", on),
+      ...section("Offline", off),
+    ];
     if (nodes.length === 0) {
       const none = document.createElement("p");
       none.className = "void-people__empty";
@@ -141,6 +200,15 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     },
     setOnline(next) {
       online = next;
+      render();
+    },
+    setCanManage(can) {
+      canManage = can;
+      invite.hidden = !can;
+      render();
+    },
+    setRequests(next) {
+      requests = next;
       render();
     },
     toggle: () => setOpen(root.dataset.open !== "true"),

@@ -31,6 +31,10 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
       return list;
     },
     async savePosition() {},
+    async addMember() {},
+    async findSummary() {
+      return undefined;
+    },
   };
 }
 

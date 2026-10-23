@@ -2,17 +2,18 @@ export const ROOM_NAME = "void";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
-// World. Must match client/src/assets/maps/office.tmj (client/src/test/map.spec.ts checks it).
+// World. Must match client/src/assets/maps/office.tmj (server/src/test/map.spec.ts checks it).
 export const TILE_SIZE = 32;
-export const MAP_COLS = 40;
-export const MAP_ROWS = 30;
+export const MAP_COLS = 90;
+export const MAP_ROWS = 67;
 export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 // Movement. The server uses these to check a move is possible, the client to make it.
 export const PLAYER_SPEED = 180;
 export const PLAYER_RADIUS = 12;
 
-export const SPAWN = { x: 10 * TILE_SIZE + TILE_SIZE / 2, y: 20 * TILE_SIZE + TILE_SIZE / 2 };
+// The middle of the central plaza.
+export const SPAWN = { x: 45 * TILE_SIZE + TILE_SIZE / 2, y: 33 * TILE_SIZE + TILE_SIZE / 2 };
 
 // A character is five layered parts from the LimeZu character generator, drawn in this order.
 // Each value is a position in the pack's sorted file list for that part, so the counts below
@@ -215,6 +216,51 @@ export const SPACE_ROUTES = {
   // Append /:id/members to read a space's members.
   PREFIX: "/spaces/",
 } as const;
+
+/** Owners and admins may invite people and decide on join requests. */
+export const canManageMembers = (role: SpaceRole) => role === "owner" || role === "admin";
+
+// Invite links. The token is shown once when the link is made; the server keeps only a hash.
+export const INVITE_ROUTES = {
+  // GET previews an invite, POST on /:token/accept uses it.
+  PREFIX: "/invites/",
+} as const;
+export const MAX_ACTIVE_INVITES = 20;
+export const MAX_INVITE_HOURS = 24 * 90;
+
+export interface InviteOptions {
+  requiresApproval: boolean;
+  /** Hours until the link stops working, or null for a link that does not expire. */
+  expiresInHours: number | null;
+}
+
+export interface InviteSummary {
+  id: string;
+  requiresApproval: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  createdByName: string;
+}
+
+export interface CreatedInvite extends InviteSummary {
+  token: string;
+}
+
+export interface InvitePreview {
+  spaceName: string;
+  requiresApproval: boolean;
+  alreadyMember: boolean;
+}
+
+export type InviteResult =
+  { status: "joined"; space: SpaceSummary } | { status: "pending"; spaceName: string };
+
+export interface JoinRequest {
+  userId: string;
+  name: string;
+  look: Look;
+  createdAt: string;
+}
 
 export interface SpaceSummary {
   id: string;

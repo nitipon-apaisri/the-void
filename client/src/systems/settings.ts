@@ -17,7 +17,7 @@ export interface Settings {
   showNames: boolean;
 }
 
-export const ZOOM_LEVELS = [1, 1.5, 2, 3] as const;
+export const ZOOM_LEVELS = [0.5, 0.75, 1, 1.5, 2, 3] as const;
 export const FPS_OPTIONS = [30, 60] as const;
 
 export const PROXIMITY_MIN_TILES = 0.5;

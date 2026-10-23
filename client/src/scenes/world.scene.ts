@@ -5,8 +5,10 @@ import Phaser from "phaser";
 import {
   SPAWN,
   TILE_SIZE,
+  canManageMembers,
   type AuthSession,
   type DesktopBridge,
+  type JoinRequest,
   type Look,
   type Position,
   type SpaceMember,
@@ -52,6 +54,10 @@ import { PlayerSprite } from "../objects/player";
 // ui
 import { createAccountBar, type AccountBar } from "../ui/account-bar";
 import { promptAuth } from "../ui/auth-form";
+import { confirmDialog } from "../ui/confirm";
+import { openInviteDialog } from "../ui/invite-dialog";
+import { createMapControls, type MapControls } from "../ui/map-controls";
+import { createMinimap, type Minimap } from "../ui/minimap";
 import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace } from "../ui/space-picker";
@@ -62,6 +68,7 @@ import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
+import { buildInviteLink, inviteBase, takeInviteFromUrl } from "../utils/invite-link";
 import { tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
@@ -87,6 +94,11 @@ export class WorldScene extends Phaser.Scene {
   private members: SpaceMember[] = [];
   // Account behind each session in the room, to tell who from the member list is online.
   private readonly accounts = new Map<string, string>();
+  private requestCount = 0;
+  private requestTimer?: Phaser.Time.TimerEvent;
+  private closeInvite?: () => void;
+  // From the link this page was opened with, if any; used once, right after sign-in.
+  private readonly inviteToken = takeInviteFromUrl();
   private accountBar?: AccountBar;
   private me?: PlayerSprite;
   private others = new Map<string, PlayerSprite>();
@@ -96,6 +108,10 @@ export class WorldScene extends Phaser.Scene {
   private settings: Settings = loadSettings(this.defaults);
   private closeSettings?: () => void;
   private zoomControls?: ZoomControls;
+  private minimap?: Minimap;
+  private mapControls?: MapControls;
+  private minimapShown = true;
+  private lastMinimap = 0;
   // Where a click is sending us: waypoints still to reach.
   private route: Position[] = [];
   private lastSent = 0;
@@ -125,6 +141,17 @@ export class WorldScene extends Phaser.Scene {
       map.tileWidth,
       (col, row) => collision.data[row][col].index > 0,
     );
+    this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
+    this.mapControls = createMapControls({
+      onZoomIn: () => this.setZoom(stepZoom(this.settings.zoom, 1)),
+      onZoomOut: () => this.setZoom(stepZoom(this.settings.zoom, -1)),
+      onLocate: () => this.showMe(),
+      onToggleMinimap: () => {
+        this.minimapShown = !this.minimapShown;
+        this.minimap?.setVisible(this.minimapShown);
+        this.mapControls?.setMinimapShown(this.minimapShown);
+      },
+    });
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.applyGraphics();
     this.scale.on(Phaser.Scale.Events.RESIZE, () => this.applyGraphics());
@@ -153,6 +180,8 @@ export class WorldScene extends Phaser.Scene {
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.zoomControls?.destroy();
+      this.minimap?.destroy();
+      this.mapControls?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -160,6 +189,7 @@ export class WorldScene extends Phaser.Scene {
       this.voicePanel.destroy();
       this.accountBar?.destroy();
       this.people?.destroy();
+      this.closeInvite?.();
     });
     void this.enter();
   }
@@ -176,7 +206,10 @@ export class WorldScene extends Phaser.Scene {
       onGoTo: (userId) => this.goToUser(userId),
       onTyping: (on) => this.setGameInput(!on),
       onToggle: (open) => this.accountBar?.setPeopleOpen(open),
+      onInvite: () => this.showInvite(),
+      onDecide: (userId, approve) => this.decideRequest(userId, approve),
     });
+    this.watchRequests(space);
     this.accountBar = createAccountBar(session.user.name, {
       onPeople: () => this.people?.toggle(),
       onSwitchSpace: () => this.switchSpace(),
@@ -223,6 +256,11 @@ export class WorldScene extends Phaser.Scene {
         throw err;
       }
     };
+    const invited = await this.useInvite(session);
+    if (invited) {
+      saveLastSpace(session.user.id, invited.id);
+      return invited;
+    }
     const lastId = loadLastSpace(session.user.id);
     if (lastId) {
       try {
@@ -240,6 +278,112 @@ export class WorldScene extends Phaser.Scene {
     this.setGameInput(true);
     saveLastSpace(session.user.id, space.id);
     return space;
+  }
+
+  // Opening a link: ask first, since a link in a message is not a promise anyone meant to join.
+  private async useInvite(session: AuthSession): Promise<SpaceSummary | undefined> {
+    const invite = this.inviteToken;
+    if (!invite) return undefined;
+    try {
+      const preview = await this.spaces.previewInvite(session.token, invite);
+      if (!preview.alreadyMember) {
+        this.setGameInput(false);
+        const yes = await confirmDialog({
+          title: `Join ${preview.spaceName}?`,
+          body: preview.requiresApproval
+            ? "An admin will have to let you in after you ask."
+            : "You will be added to this space right away.",
+          confirmLabel: preview.requiresApproval ? "Ask to join" : "Join",
+        });
+        this.setGameInput(true);
+        if (!yes) return undefined;
+      }
+      const result = await this.spaces.acceptInvite(session.token, invite);
+      if (result.status === "joined") return result.space;
+      this.toast.show(
+        `Asked to join ${result.spaceName}. An admin will let you in.`,
+        "success",
+        6000,
+      );
+    } catch (err) {
+      this.toast.show(
+        err instanceof Error ? err.message : "Could not use that link",
+        "error",
+        6000,
+      );
+    }
+    return undefined;
+  }
+
+  private showInvite() {
+    const { session, space } = this;
+    if (!session || !space || this.closeInvite) return;
+    this.setGameInput(false);
+    this.closeInvite = openInviteDialog(
+      {
+        create: (options) => this.spaces.createInvite(session.token, space.id, options),
+        list: () => this.spaces.listInvites(session.token, space.id),
+        revoke: (id) => this.spaces.revokeInvite(session.token, space.id, id),
+        link: (token) => buildInviteLink(inviteBase(), token),
+      },
+      () => {
+        this.closeInvite = undefined;
+        this.setGameInput(true);
+      },
+    );
+  }
+
+  // Owners and admins find out about people waiting at the door without having to look.
+  private watchRequests(space: SpaceSummary) {
+    const manage = canManageMembers(space.role);
+    this.people?.setCanManage(manage);
+    if (!manage) return;
+    const poll = async () => {
+      const session = this.session;
+      if (!session) return;
+      try {
+        const requests = await this.spaces.listRequests(session.token, space.id);
+        this.people?.setRequests(requests);
+        if (requests.length > this.requestCount) {
+          this.toast.show(this.waitingMessage(requests), "info", 5000);
+        }
+        this.requestCount = requests.length;
+      } catch {
+        // Next poll will try again.
+      }
+    };
+    void poll();
+    this.requestTimer = this.time.addEvent({ delay: 30_000, loop: true, callback: poll });
+  }
+
+  private waitingMessage(requests: readonly JoinRequest[]) {
+    return requests.length === 1
+      ? `${requests[0]!.name} wants to join`
+      : `${requests.length} people want to join`;
+  }
+
+  private async decideRequest(userId: string, approve: boolean) {
+    const { session, space } = this;
+    if (!session || !space) return;
+    try {
+      await this.spaces.decideRequest(session.token, space.id, userId, approve);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not save that", "error", 4000);
+      throw err;
+    }
+    this.requestCount = Math.max(0, this.requestCount - 1);
+    void this.refreshRequests();
+    if (approve) void this.loadMembers();
+  }
+
+  private async refreshRequests() {
+    const { session, space } = this;
+    if (!session || !space) return;
+    try {
+      this.people?.setRequests(await this.spaces.listRequests(session.token, space.id));
+    } catch {
+      // Shown stale until the next poll.
+    }
   }
 
   private switchSpace() {
@@ -531,9 +675,14 @@ export class WorldScene extends Phaser.Scene {
   // A click on the world: walk there, round walls. Overlays sit above the canvas and take their
   // own clicks, so this only sees clicks on the map.
   private walkTo(pointer: Phaser.Input.Pointer) {
+    if (!pointer.leftButtonDown()) return;
+    this.walkToPoint({ x: pointer.worldX, y: pointer.worldY });
+  }
+
+  private walkToPoint(point: Position) {
     const me = this.me;
-    if (!me || !pointer.leftButtonDown()) return;
-    const route = findPath(this.grid, me, { x: pointer.worldX, y: pointer.worldY }, PLAYER_RADIUS);
+    if (!me) return;
+    const route = findPath(this.grid, me, point, PLAYER_RADIUS);
     if (route.length === 0) return;
     this.route = route;
     const end = route[route.length - 1]!;
@@ -545,6 +694,23 @@ export class WorldScene extends Phaser.Scene {
       duration: 500,
       onComplete: () => marker.destroy(),
     });
+  }
+
+  // A ring that grows out from you, for finding yourself on a big map or in a crowd.
+  private showMe() {
+    const me = this.me;
+    if (!me) return;
+    for (let i = 0; i < 3; i++) {
+      const ring = this.add.circle(me.x, me.y, 10).setStrokeStyle(3, 0x8b93ff).setDepth(5);
+      this.tweens.add({
+        targets: ring,
+        scale: 5,
+        alpha: 0,
+        delay: i * 250,
+        duration: 800,
+        onComplete: () => ring.destroy(),
+      });
+    }
   }
 
   update(time: number, delta: number) {
@@ -586,6 +752,15 @@ export class WorldScene extends Phaser.Scene {
     }
     me.tick(time);
     for (const other of this.others.values()) other.tick(time);
+
+    if (this.minimap && time - this.lastMinimap > 100) {
+      this.lastMinimap = time;
+      this.minimap.draw({
+        me,
+        others: [...this.others.values()],
+        view: this.cameras.main.worldView,
+      });
+    }
 
     if (this.voice && time - this.lastProximity > PROXIMITY_CHECK_MS) {
       this.lastProximity = time;

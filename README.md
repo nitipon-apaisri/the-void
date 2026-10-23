@@ -6,7 +6,9 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 
 - **Accounts**: sign up with an email and password, edit your name and character, change email or password, sign out other devices, delete your account.
 - **Spaces**: each space is its own room with its own members and its own voice. You pick one after signing in; the last one opens by itself.
-- **Walking**: arrow keys or WASD, or click anywhere and your character finds a path round the walls.
+- **Invite links**: owners and admins share a link, optionally needing their approval; pending people appear in the People panel.
+- **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
+- **Map controls**: a mini map and floating buttons for zoom and "show me".
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
 - **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting.
 - **Character customize**: five layered parts (skin, eyes, outfit, hair, extra), each with a style and a colour.
@@ -14,7 +16,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 
 The server is authoritative. It checks who may join a space, and it refuses moves into walls or faster than walking speed.
 
-The roadmap (invites, a bigger map, a mini map, table claiming, waving, furniture) is in [`PLAN.md`](PLAN.md).
+The roadmap (table claiming, waving, furniture, roles) is in [`PLAN.md`](PLAN.md).
 
 ## How it fits together
 
@@ -48,7 +50,7 @@ npm run dev:client              # Vite on :5173, open it in a browser
 npm run dev:desktop             # or: build and launch the Electron app
 ```
 
-Open two browser windows, create two accounts, and have one invite the other (until invite links exist, add members to `t_space_members` by hand). Walk close together to hear each other.
+Open two browser windows, create two accounts, make an invite link in the People panel with the first and open it with the second. Walk close together to hear each other.
 
 ### The art
 
