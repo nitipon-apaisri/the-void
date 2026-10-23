@@ -4,3 +4,7 @@ out
 release
 .env
 .DS_Store
+
+# Licensed art pack: not redistributable (see client/src/assets/art/limezu/**/LICENSE.txt)
+client/src/assets/art/
+client/src/assets/game/

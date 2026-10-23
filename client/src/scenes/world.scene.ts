@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 
 // shared
-import { SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge } from "@void/shared";
+import { AVATAR_COUNT, SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge } from "@void/shared";
 
 // config
 import {
@@ -23,6 +23,7 @@ import { connectVoice, listMediaDevices, type VoiceConnection } from "../net/voi
 import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
 
 // systems
+import { FRAME } from "../systems/character-frames";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
 import { stepPosition } from "../systems/movement";
@@ -30,6 +31,7 @@ import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
 
 // objects
+import { createCharacterAnimations } from "../objects/character-anims";
 import { PlayerSprite } from "../objects/player";
 
 // ui
@@ -42,11 +44,11 @@ import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
+import { characterUrls, tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
 
 import mapUrl from "../assets/maps/office.tmj?url";
-import tilesUrl from "../assets/maps/tileset.png";
 
 export class WorldScene extends Phaser.Scene {
   private connection?: VoidConnection;
@@ -77,20 +79,28 @@ export class WorldScene extends Phaser.Scene {
 
   preload() {
     this.load.tilemapTiledJSON("office", mapUrl);
-    this.load.image("tiles", tilesUrl);
+    for (const [name, url] of Object.entries(tilesetUrls)) this.load.image(name, url);
+    characterUrls.forEach((url, i) =>
+      this.load.spritesheet(`character-${i}`, url, {
+        frameWidth: FRAME.width,
+        frameHeight: FRAME.height,
+      }),
+    );
   }
 
   create() {
+    createCharacterAnimations(this, Math.min(AVATAR_COUNT, characterUrls.length));
     const map = this.make.tilemap({ key: "office" });
-    const tileset = map.addTilesetImage("tiles", "tiles")!;
-    map.createLayer("floor", tileset);
-    const objects = map.createLayer("objects", tileset)!;
-    objects.setCollisionByProperty({ collides: true });
+    const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
+    for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
+    // "collision" is never drawn: any tile in it blocks movement.
+    const collision = map.getLayer("collision");
+    if (!collision) throw new Error("the map has no collision layer");
     this.grid = createGrid(
       map.width,
       map.height,
       map.tileWidth,
-      (col, row) => objects.getTileAt(col, row, true)?.collides ?? false,
+      (col, row) => collision.data[row][col].index > 0,
     );
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
@@ -263,6 +273,10 @@ export class WorldScene extends Phaser.Scene {
         const sprite = this.others.get(p.id);
         if (!sprite) return;
         sprite.setProfile(p.name, p.avatar);
+        const dx = p.x - sprite.x;
+        const dy = p.y - sprite.y;
+        // The same message also carries name changes; only a real move counts as a step.
+        if (Math.hypot(dx, dy) > 0.5) sprite.step(dx, dy);
         this.tweens.add({ targets: sprite, x: p.x, y: p.y, duration: REMOTE_TWEEN_MS });
       });
       connection.onPlayerRemove((id) => this.removeOther(id));
@@ -374,10 +388,13 @@ export class WorldScene extends Phaser.Scene {
       const target = stepPosition(me, dir, PLAYER_SPEED, delta);
       const next = moveWithCollision(this.grid, me, target, PLAYER_RADIUS);
       if (next.x !== me.x || next.y !== me.y) {
+        me.step(dir.dx, dir.dy);
         me.setPosition(next.x, next.y);
         this.unsent = true;
       }
     }
+    me.tick(time);
+    for (const other of this.others.values()) other.tick(time);
 
     if (this.voice && time - this.lastProximity > PROXIMITY_CHECK_MS) {
       this.lastProximity = time;

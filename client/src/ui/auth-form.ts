@@ -1,11 +1,13 @@
 // shared
 import {
-  AVATAR_COLORS,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   type AuthSession,
 } from "@void/shared";
+
+// ui
+import { createAvatarPicker } from "./avatar-picker";
 
 // utils
 import { injectStyle } from "../utils/dom";
@@ -34,9 +36,6 @@ const STYLES = `
   background: #0b0b10; color: #f9fafb; font: inherit; }
 .void-auth input:focus-visible, .void-auth button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 .void-auth [hidden] { display: none; }
-.void-auth .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
-.void-auth .swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.void-auth .swatch[aria-checked="true"] { border-color: #f9fafb; }
 .void-auth .submit { padding: 10px 12px; border-radius: 8px; border: 0; cursor: pointer;
   background: #6ee7b7; color: #052e1f; font: inherit; font-weight: 600; }
 .void-auth .submit:disabled { opacity: 0.6; cursor: wait; }
@@ -44,13 +43,10 @@ const STYLES = `
 .void-auth .error { margin: 0; color: #fca5a5; min-height: 1.4em; }
 `;
 
-const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
-
 /** Shows the sign in / create account form until `submit` succeeds, then resolves with the session. */
 export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession> {
   injectStyle(STYLE_ID, STYLES);
   let mode: AuthMode = "login";
-  let avatar = 0;
 
   const overlay = document.createElement("div");
   overlay.className = "void-auth";
@@ -66,7 +62,7 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
       <label data-register hidden>Display name
         <input name="name" maxlength="${MAX_NAME_LENGTH}" autocomplete="nickname" />
       </label>
-      <div data-register hidden role="radiogroup" aria-label="Avatar colour" class="swatches"></div>
+      <div data-register hidden class="avatar-slot"></div>
       <p class="error" role="alert"></p>
       <button class="submit" type="submit"></button>
       <button class="switch" type="button"></button>
@@ -83,22 +79,8 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
   const switchButton = q<HTMLButtonElement>(".switch");
   error.textContent = notice;
 
-  const swatches = AVATAR_COLORS.map((color, i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "swatch";
-    b.style.background = hex(color);
-    b.setAttribute("role", "radio");
-    b.setAttribute("aria-label", `Colour ${i + 1}`);
-    b.addEventListener("click", () => selectAvatar(i));
-    q(".swatches").append(b);
-    return b;
-  });
-  const selectAvatar = (i: number) => {
-    avatar = i;
-    swatches.forEach((b, j) => b.setAttribute("aria-checked", String(j === i)));
-  };
-  selectAvatar(0);
+  const avatarPicker = createAvatarPicker(0, "Character");
+  q(".avatar-slot").append(avatarPicker.element);
 
   const render = () => {
     const registering = mode === "register";
@@ -134,7 +116,7 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
           email: email.value,
           password: password.value,
           name: name.value,
-          avatar,
+          avatar: avatarPicker.value(),
         });
         overlay.remove();
         resolve(session);

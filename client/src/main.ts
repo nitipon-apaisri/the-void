@@ -8,6 +8,8 @@ new Phaser.Game({
   width: window.innerWidth,
   height: window.innerHeight,
   backgroundColor: "#0b0b10",
+  // The art is 32px pixel art: scale it with nearest-neighbour and whole pixels, never blurred.
+  pixelArt: true,
   scene: [WorldScene],
   scale: { mode: Phaser.Scale.RESIZE },
 });

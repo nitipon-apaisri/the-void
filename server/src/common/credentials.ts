@@ -1,6 +1,6 @@
 // shared
 import {
-  AVATAR_COLORS,
+  AVATAR_COUNT,
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
@@ -54,7 +54,7 @@ const parseName = (raw: unknown): string | undefined => {
 };
 
 const parseAvatar = (raw: unknown): number | undefined =>
-  Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) < AVATAR_COLORS.length
+  Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) < AVATAR_COUNT
     ? (raw as number)
     : undefined;
 
@@ -81,7 +81,7 @@ export function parseProfile(body: unknown): Parsed<UpdateProfilePayload> {
   const name = parseName(body.name);
   if (!name) return fail(`name must be 1 to ${MAX_NAME_LENGTH} characters`);
   const avatar = parseAvatar(body.avatar);
-  if (avatar === undefined) return fail("pick an avatar colour");
+  if (avatar === undefined) return fail("pick a character");
   return { ok: true, value: { name, avatar } };
 }
 

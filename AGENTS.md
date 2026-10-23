@@ -136,6 +136,13 @@ Shared types → server room handler/state → server tests → client system (p
 - Electron: `contextIsolation` on, `nodeIntegration` off, `sandbox` on. Restrict permission handlers to what is needed (media). Never load remote content in a window with a preload API.
 - Authorize on the server (room join, private-room access), never only in the client.
 
+## Art
+
+The pictures come from the paid LimeZu "Modern Interiors" pack (https://limezu.itch.io/moderninteriors). Its licence allows use in the app, with credit, but not redistribution, so the pack and the sheets copied from it (`client/src/assets/art/`, `client/src/assets/game/`) are git-ignored and **never committed**. Each developer buys their own copy, unzips it to `client/src/assets/art/limezu/moderninteriors-win`, and runs `npm run assets:import` once (it also takes a path: `npm run assets:import -- /path/to/pack`). Without it the client has no tiles or characters.
+
+- The map layout is ours and committed: `client/src/assets/maps/office.tmj`. Layers: `floor`, `decor` (under players), `objects`, and a hidden `collision` layer where any tile blocks movement. The import writes the map only if it is missing; `--map` regenerates it, which overwrites edits made in Tiled.
+- Characters are 32 x 64 frames, 56 per row; frame layout lives in `client/src/systems/character-frames.ts`. The credit line in the Settings window must stay.
+
 ## Scripts
 
 Run from the repo root:
@@ -154,7 +161,7 @@ Desktop is bundled with esbuild (so `@void/shared` is inlined, including into th
 npm run lint          # oxlint
 npm run format        # prettier --write
 npm run format:check  # prettier --check
-npm run assets        # regenerate placeholder tileset.png and office.tmj
+npm run assets:import # copy art sheets from your LimeZu pack into client/src/assets/game (see "Art" below)
 npm run audit:osv     # osv-scanner on package-lock.json (also runs on pre-push)
 ```
 

@@ -10,8 +10,9 @@ export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 export const SPAWN = { x: 10 * TILE_SIZE + TILE_SIZE / 2, y: 20 * TILE_SIZE + TILE_SIZE / 2 };
 
-// Avatar choices; players send an index into this list.
-export const AVATAR_COLORS = [0x6ee7b7, 0x93c5fd, 0xfca5a5, 0xfcd34d, 0xc4b5fd, 0xf9a8d4] as const;
+// Avatar choices; players send an index 0..AVATAR_COUNT-1. The client maps it to a premade
+// character sheet (client/src/utils/characters.ts); 4c replaces this with layered parts.
+export const AVATAR_COUNT = 10;
 
 // Players closer than this (in tiles) hear and see each other.
 export const PROXIMITY_TILES = 3;

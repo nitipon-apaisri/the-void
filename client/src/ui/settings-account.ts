@@ -1,6 +1,5 @@
 // shared
 import {
-  AVATAR_COLORS,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -9,6 +8,9 @@ import {
 
 // net
 import { AuthRequestError } from "../net/auth-client";
+
+// ui
+import { createAvatarPicker } from "./avatar-picker";
 
 /** What the account tab can ask the app to do. Each call throws an Error with a displayable message. */
 export interface AccountActions {
@@ -24,8 +26,6 @@ export interface AccountContext {
   profile: UserProfile;
   actions: AccountActions;
 }
-
-const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
 
 const messageOf = (err: unknown) => {
   if (err instanceof AuthRequestError) return err.message;
@@ -57,7 +57,6 @@ async function run(
 
 export function buildAccountTab({ profile, actions }: AccountContext): HTMLElement {
   let current = profile;
-  let avatar = profile.avatar;
 
   const root = document.createElement("div");
   root.style.display = "grid";
@@ -68,7 +67,7 @@ export function buildAccountTab({ profile, actions }: AccountContext): HTMLEleme
       <label>Display name
         <input name="name" maxlength="${MAX_NAME_LENGTH}" autocomplete="nickname" />
       </label>
-      <div role="radiogroup" aria-label="Avatar colour" class="swatches"></div>
+      <div class="avatar-slot"></div>
       <button class="primary" type="button">Save profile</button>
       <p class="status" role="status"></p>
     </section>
@@ -114,31 +113,18 @@ export function buildAccountTab({ profile, actions }: AccountContext): HTMLEleme
   const section = (name: string) => root.querySelector<HTMLElement>(`[data-${name}]`)!;
   const input = (sec: HTMLElement, name: string) =>
     sec.querySelector<HTMLInputElement>(`input[name=${name}]`)!;
-  const button = (sec: HTMLElement) => sec.querySelector<HTMLButtonElement>("button:not(.swatch)")!;
+  const button = (sec: HTMLElement) =>
+    sec.querySelector<HTMLButtonElement>("button:not(.void-avatar)")!;
 
   // Profile
   const profileSec = section("profile");
   const name = input(profileSec, "name");
   name.value = current.name;
-  const swatches = AVATAR_COLORS.map((color, i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "swatch";
-    b.style.background = hex(color);
-    b.setAttribute("role", "radio");
-    b.setAttribute("aria-label", `Colour ${i + 1}`);
-    b.addEventListener("click", () => pick(i));
-    profileSec.querySelector(".swatches")!.append(b);
-    return b;
-  });
-  const pick = (i: number) => {
-    avatar = i;
-    swatches.forEach((b, j) => b.setAttribute("aria-checked", String(j === i)));
-  };
-  pick(avatar);
+  const avatarPicker = createAvatarPicker(current.avatar, "Character");
+  profileSec.querySelector(".avatar-slot")!.append(avatarPicker.element);
   button(profileSec).addEventListener("click", () =>
     run(profileSec, button(profileSec), async () => {
-      current = await actions.updateProfile(name.value, avatar);
+      current = await actions.updateProfile(name.value, avatarPicker.value());
       name.value = current.name;
     }),
   );

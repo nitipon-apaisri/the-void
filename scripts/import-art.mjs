@@ -1,0 +1,210 @@
+// Copies the sheets we use out of the licensed LimeZu "Modern Interiors" pack into
+// client/src/assets/game/ and writes the office map (Tiled .tmj) that uses them.
+//
+// The pack is not redistributable, so neither the pack nor game/ is committed: everyone who
+// builds the game needs their own copy (https://limezu.itch.io/moderninteriors). Put it at
+// client/src/assets/art/limezu/moderninteriors-win, or pass another folder:
+//   npm run assets:import -- /path/to/moderninteriors-win
+//
+// The map layout is ours and is committed (maps/office.tmj); only pictures come from the pack.
+// The map is written only when it is missing or you pass --map, so edits made in Tiled survive
+// a re-import. Tilesets keep their names (floors, walls, generic, conference).
+// Keep COLS/ROWS/TILE in sync with shared/src/index.ts.
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const TILE = 32;
+const COLS = 40;
+const ROWS = 30;
+
+const root = new URL("../client/src/assets/", import.meta.url);
+const args = process.argv.slice(2);
+const writeMap = args.includes("--map");
+const pack = path.resolve(
+  args.find((a) => !a.startsWith("--")) ?? new URL("art/limezu/moderninteriors-win", root).pathname,
+);
+const outDir = new URL("game/", root).pathname;
+
+if (!existsSync(path.join(pack, "LICENSE.txt"))) {
+  console.error(`Art pack not found at ${pack}\nDownload Modern Interiors and pass its folder.`);
+  process.exit(1);
+}
+
+const interiors = path.join(pack, "1_Interiors/32x32");
+const SHEETS = {
+  floors: path.join(interiors, "Room_Bulder_subfiles_32x32/Room_Builder_Floors_32x32.png"),
+  walls: path.join(interiors, "Room_Bulder_subfiles_32x32/Room_Builder_Walls_32x32.png"),
+  generic: path.join(interiors, "Theme_Sorter_32x32/1_Generic_32x32.png"),
+  conference: path.join(interiors, "Theme_Sorter_32x32/13_Conference_Hall_32x32.png"),
+};
+const CHARACTERS = path.join(pack, "2_Characters/Character_Generator/0_Premade_Characters/32x32");
+
+mkdirSync(path.join(outDir, "characters"), { recursive: true });
+
+// PNG width and height live at fixed offsets in the IHDR chunk.
+const size = (file) => {
+  const b = readFileSync(file);
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+};
+
+// ---- sheets and tilesets ----
+const tilesets = [];
+let nextGid = 1;
+const sheet = {};
+for (const [name, file] of Object.entries(SHEETS)) {
+  copyFileSync(file, path.join(outDir, `${name}.png`));
+  const { w, h } = size(file);
+  const columns = w / TILE;
+  const count = columns * (h / TILE);
+  sheet[name] = { firstgid: nextGid, columns };
+  tilesets.push({
+    firstgid: nextGid,
+    name,
+    image: `${name}.png`,
+    imagewidth: w,
+    imageheight: h,
+    tilewidth: TILE,
+    tileheight: TILE,
+    tilecount: count,
+    columns,
+    margin: 0,
+    spacing: 0,
+  });
+  nextGid += count;
+}
+
+for (let i = 1; i <= 10; i++) {
+  const n = String(i).padStart(2, "0");
+  copyFileSync(
+    path.join(CHARACTERS, `Premade_Character_32x32_${n}.png`),
+    path.join(outDir, `characters/premade-${n}.png`),
+  );
+}
+
+// ---- map ----
+const blank = () => Array.from({ length: COLS * ROWS }, () => 0);
+const floor = blank();
+const decor = blank();
+const objects = blank();
+// Never drawn. Any tile here blocks movement, so what you see and what you bump into can differ
+// (the art is not tile-aligned: a table can be 2.4 tiles wide inside a 4 tile stamp).
+const collision = blank();
+const at = (x, y) => y * COLS + x;
+const gid = (name, col, row) => sheet[name].firstgid + row * sheet[name].columns + col;
+
+const put = (layer, name, col, row, x, y) => {
+  if (x >= 0 && y >= 0 && x < COLS && y < ROWS) layer[at(x, y)] = gid(name, col, row);
+};
+// Copies a w x h block of a sheet to the map, top-left at (x, y).
+const stamp = (layer, name, col, row, w, h, x, y) => {
+  for (let dy = 0; dy < h; dy++)
+    for (let dx = 0; dx < w; dx++) put(layer, name, col + dx, row + dy, x + dx, y + dy);
+};
+const block = (x, y, w = 1, h = 1) => {
+  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) collision[at(x + dx, y + dy)] = 1;
+};
+// The middle tile of a floor pattern is plain, so it repeats without visible seams.
+const carpet = (name, col, row, x0, y0, x1, y1) => {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(floor, name, col, row, x, y);
+};
+
+// Wall style: grey (rows 4-5 of the wall sheet). Horizontal walls are two tiles tall.
+const W = { row: 4 };
+const hwall = (x0, x1, y) => {
+  for (let x = x0; x <= x1; x++) {
+    const col = x === x0 ? 0 : x === x1 ? 3 : 1 + (x % 2);
+    put(objects, "walls", col, W.row, x, y);
+    put(objects, "walls", col, W.row + 1, x, y + 1);
+    block(x, y, 1, 2);
+  }
+};
+const vwall = (x, y0, y1) => {
+  for (let y = y0; y <= y1; y++) {
+    put(objects, "walls", 5, W.row + 1, x, y);
+    block(x, y);
+  }
+};
+
+// Rooms
+carpet("floors", 1, 5, 1, 2, 19, 27); // open office: light grey carpet
+carpet("floors", 1, 13, 21, 2, 38, 27); // right side: wood
+carpet("floors", 1, 13, 20, 13, 20, 15); // the doorway floor
+
+hwall(0, 39, 0);
+hwall(0, 39, 28);
+vwall(0, 2, 27);
+vwall(39, 2, 27);
+for (const [y0, y1] of [
+  [2, 12],
+  [16, 27],
+])
+  vwall(20, y0, y1); // divider, door at rows 13-15
+
+// Open office: two rows of workstations
+for (const y of [5, 11])
+  for (const x of [3, 8, 13]) {
+    stamp(objects, "generic", 0, 5, 4, 3, x, y);
+    block(x + 1, y, 2, 3);
+    stamp(objects, "generic", 2, 11, 1, 2, x + 1, y + 3);
+    block(x + 1, y + 3);
+  }
+// Lounge corner
+stamp(decor, "generic", 9, 4, 4, 3, 3, 20);
+stamp(objects, "generic", 6, 11, 3, 2, 4, 23);
+block(4, 23, 3, 1);
+
+// Meeting room
+stamp(objects, "conference", 0, 1, 5, 3, 26, 8);
+block(27, 8, 3, 3);
+for (const y of [6, 12])
+  for (const x of [26, 28, 30]) {
+    stamp(objects, "conference", 11, 6, 1, 1, x, y);
+    block(x, y);
+  }
+stamp(objects, "conference", 10, 1, 2, 2, 28, 2);
+block(28, 2, 2, 2);
+stamp(objects, "conference", 13, 7, 1, 1, 37, 3);
+block(37, 3);
+
+const layer = (id, name, data) => ({
+  id,
+  name,
+  type: "tilelayer",
+  width: COLS,
+  height: ROWS,
+  x: 0,
+  y: 0,
+  opacity: 1,
+  visible: true,
+  data,
+});
+
+const map = {
+  compressionlevel: -1,
+  infinite: false,
+  orientation: "orthogonal",
+  renderorder: "right-down",
+  type: "map",
+  version: "1.10",
+  tiledversion: "1.10.2",
+  nextlayerid: 5,
+  nextobjectid: 1,
+  width: COLS,
+  height: ROWS,
+  tilewidth: TILE,
+  tileheight: TILE,
+  layers: [
+    layer(1, "floor", floor),
+    layer(2, "decor", decor),
+    layer(3, "objects", objects),
+    { ...layer(4, "collision", collision), visible: false },
+  ],
+  tilesets,
+};
+const mapFile = new URL("maps/office.tmj", root);
+const mapWritten = writeMap || !existsSync(mapFile);
+if (mapWritten) writeFileSync(mapFile, JSON.stringify(map));
+console.log(
+  `copied ${Object.keys(SHEETS).length} sheets and 10 characters; ` +
+    (mapWritten ? "wrote office.tmj" : "kept office.tmj (pass --map to regenerate it)"),
+);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AVATAR_COLORS,
+  AVATAR_COUNT,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -67,7 +67,7 @@ describe("parseRegistration", () => {
     expect(parseRegistration({ ...valid, name: "a".repeat(MAX_NAME_LENGTH + 1) }).ok).toBe(false);
   });
 
-  it.each([-1, AVATAR_COLORS.length, 1.5, "1", null, undefined])("rejects avatar %j", (avatar) => {
+  it.each([-1, AVATAR_COUNT, 1.5, "1", null, undefined])("rejects avatar %j", (avatar) => {
     expect(parseRegistration({ ...valid, avatar }).ok).toBe(false);
   });
 });
@@ -93,7 +93,7 @@ describe("account edit parsers", () => {
       value: { name: "Al", avatar: 0 },
     });
     expect(parseProfile({ name: "", avatar: 0 }).ok).toBe(false);
-    expect(parseProfile({ name: "Al", avatar: AVATAR_COLORS.length }).ok).toBe(false);
+    expect(parseProfile({ name: "Al", avatar: AVATAR_COUNT }).ok).toBe(false);
     expect(parseProfile({ name: "x".repeat(MAX_NAME_LENGTH + 1), avatar: 0 }).ok).toBe(false);
   });
 
