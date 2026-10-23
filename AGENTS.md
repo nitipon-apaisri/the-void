@@ -164,9 +164,10 @@ npm run format        # prettier --write
 npm run format:check  # prettier --check
 npm run assets:import # copy art sheets from your LimeZu pack into client/src/assets/game (see "Art" below)
 npm run audit:osv     # osv-scanner on package-lock.json (also runs on pre-push)
+npm run audit:secrets # gitleaks on git history (also runs on pre-push; staged files on pre-commit)
 ```
 
-Husky: `pre-commit` → lint-staged (Prettier + Oxlint on staged files); `pre-push` → `npm run audit:osv` (needs `osv-scanner` installed, e.g. `brew install osv-scanner`).
+Husky: `pre-commit` → lint-staged (Prettier + Oxlint on staged files) and `gitleaks protect --staged`; `pre-push` → `npm run audit:osv` and `npm run audit:secrets` (need `osv-scanner` and `gitleaks` installed, e.g. `brew install osv-scanner gitleaks`). Allowlist false positives in `.gitleaks.toml`, never by skipping the hook.
 
 ```bash
 npm run typecheck     # tsc --noEmit for shared, client, server, desktop

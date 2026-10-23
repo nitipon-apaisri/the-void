@@ -70,6 +70,7 @@ Voice and video go through a self-hosted [LiveKit](https://livekit.io) server (s
 - Node.js and npm (this repo uses npm workspaces; please do not switch to pnpm or yarn)
 - Docker, for Postgres and LiveKit
 - `osv-scanner` for the pre-push check (`brew install osv-scanner`)
+- `gitleaks` for the secret scan on pre-commit and pre-push (`brew install gitleaks`)
 - A copy of the LimeZu art pack (see below)
 
 ## Getting started
@@ -106,6 +107,7 @@ npm run lint          # oxlint
 npm run format        # prettier --write
 npm test              # vitest
 npm run audit:osv     # known-vulnerability scan of package-lock.json
+npm run audit:secrets # gitleaks scan of the git history for committed secrets
 ```
 
 Husky runs Prettier and Oxlint on staged files before a commit, and the vulnerability scan before a push.

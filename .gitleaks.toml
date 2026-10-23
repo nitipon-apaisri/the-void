@@ -1,0 +1,14 @@
+title = "The Void gitleaks config"
+
+[extend]
+useDefault = true
+
+# Dev-only placeholders that ship in .env.example and docker/livekit.yaml.
+[[allowlists]]
+description = "Dev placeholders"
+paths = [
+  '''\.env\.example$''',
+  '''docker/livekit\.yaml$''',
+  '''package-lock\.json$''',
+  '''client/src/test/invite-link\.spec\.ts$''',
+]

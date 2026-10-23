@@ -1,1 +1,2 @@
 npm run audit:osv
+npm run audit:secrets
