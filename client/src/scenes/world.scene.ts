@@ -6,6 +6,13 @@ import {
   SPAWN,
   TILE_SIZE,
   TABLES_LAYER,
+  canDecorate,
+  findFurniture,
+  fullRect,
+  placementError,
+  setBlocked,
+  type FurnitureItem,
+  type PlacedFurniture,
   WAVE_RANGE,
   canManageMembers,
   type AuthSession,
@@ -69,6 +76,7 @@ import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
+import { createDecoratePanel, type DecoratePanel, type DecorateTool } from "../ui/decorate-panel";
 import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
 import { createToast, type Toast } from "../ui/toast";
@@ -126,6 +134,15 @@ export class WorldScene extends Phaser.Scene {
   private readonly tableLabels = new Map<string, Phaser.GameObjects.Text>();
   private tablePromptView?: TablePromptView;
   private lastTablePrompt = 0;
+  private decorate?: DecoratePanel;
+  private tool?: DecorateTool;
+  // The map's own walls, so placed furniture can be added on top and taken off again.
+  private baseBlocked: boolean[] = [];
+  private pieces = new Map<string, PlacedFurniture>();
+  private readonly pieceImages = new Map<string, Phaser.GameObjects.Image[]>();
+  private ghost?: Phaser.GameObjects.Image;
+  private ghostSpot?: { col: number; row: number };
+  private hoverBox?: Phaser.GameObjects.Rectangle;
   private waveButton?: WaveButton;
   private waveTarget?: string;
   // True while the route came from "go to a person": that is quicker than walking.
@@ -166,6 +183,14 @@ export class WorldScene extends Phaser.Scene {
     );
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
+    this.baseBlocked = [...this.grid.blocked];
+    this.decorate = createDecoratePanel({
+      onToggle: (open) => {
+        if (!open) this.setTool(undefined);
+      },
+      onTool: (tool) => this.setTool(tool),
+    });
+    this.input.keyboard!.on("keydown-ESC", () => this.decorate?.close());
     this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
     this.mapControls = createMapControls({
       onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
@@ -213,6 +238,7 @@ export class WorldScene extends Phaser.Scene {
       this.mapControls?.destroy();
       this.tablePromptView?.destroy();
       this.waveButton?.destroy();
+      this.decorate?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -550,6 +576,167 @@ export class WorldScene extends Phaser.Scene {
     connection.wave(waveTarget);
   }
 
+  // A frame is a cut-out of a tileset image: the whole item, or its top rows (drawn over players).
+  private furnitureFrame(item: FurnitureItem, part: "full" | "under" | "over") {
+    const key = `${item.id}:${part}`;
+    const texture = this.textures.get(item.sheet);
+    if (!texture.has(key)) {
+      const over = item.over ?? 0;
+      const [from, rows] =
+        part === "full" ? [0, item.h] : part === "over" ? [0, over] : [over, item.h - over];
+      texture.add(
+        key,
+        0,
+        item.sx * TILE_SIZE,
+        (item.sy + from) * TILE_SIZE,
+        item.w * TILE_SIZE,
+        rows * TILE_SIZE,
+      );
+    }
+    return key;
+  }
+
+  private drawPiece(item: FurnitureItem, piece: PlacedFurniture) {
+    const over = item.over ?? 0;
+    const x = piece.col * TILE_SIZE;
+    const y = piece.row * TILE_SIZE;
+    // Under players, above the map's own floor and objects; a rug sits lowest.
+    const images = [
+      this.add
+        .image(x, y + over * TILE_SIZE, item.sheet, this.furnitureFrame(item, "under"))
+        .setOrigin(0)
+        .setDepth(item.block ? 4 : 3),
+    ];
+    if (over > 0) {
+      images.push(
+        this.add
+          .image(x, y, item.sheet, this.furnitureFrame(item, "over"))
+          .setOrigin(0)
+          .setDepth(20),
+      );
+    }
+    return images;
+  }
+
+  // The room sends every piece; draw what is new, drop what is gone, and rebuild the walls.
+  private syncFurniture(list: readonly PlacedFurniture[]) {
+    const next = new Map(list.map((p) => [p.id, p]));
+    for (const [id, images] of this.pieceImages) {
+      if (next.has(id)) continue;
+      images.forEach((image) => image.destroy());
+      this.pieceImages.delete(id);
+    }
+    this.grid.blocked = [...this.baseBlocked];
+    for (const piece of list) {
+      const item = findFurniture(piece.itemId);
+      if (!item) continue;
+      if (!this.pieceImages.has(piece.id))
+        this.pieceImages.set(piece.id, this.drawPiece(item, piece));
+      setBlocked(this.grid, item, piece.col, piece.row, true);
+    }
+    this.pieces = next;
+    this.minimap?.refresh();
+  }
+
+  private furnitureError(item: FurnitureItem, col: number, row: number) {
+    const people = [this.me, ...this.others.values()].filter((p) => p !== undefined);
+    return placementError(this.grid, item, col, row, {
+      people,
+      personRadius: PLAYER_RADIUS,
+      tables: this.tables,
+    });
+  }
+
+  private setTool(tool: DecorateTool | undefined) {
+    this.tool = tool;
+    this.ghost?.destroy();
+    this.hoverBox?.destroy();
+    this.ghost = this.hoverBox = this.ghostSpot = undefined;
+    if (tool?.kind === "item") {
+      const { item } = tool;
+      this.ghost = this.add
+        .image(0, 0, item.sheet, this.furnitureFrame(item, "full"))
+        .setOrigin(0)
+        .setDepth(30)
+        .setAlpha(0.8)
+        .setVisible(false);
+    } else if (tool?.kind === "remove") {
+      this.hoverBox = this.add
+        .rectangle(0, 0, 0, 0)
+        .setOrigin(0)
+        .setStrokeStyle(2, 0xff6b81)
+        .setDepth(30)
+        .setVisible(false);
+    }
+  }
+
+  private pieceAt(x: number, y: number) {
+    for (const piece of [...this.pieces.values()].reverse()) {
+      const item = findFurniture(piece.itemId);
+      if (!item) continue;
+      const r = fullRect(item, piece.col, piece.row);
+      if (
+        x >= r.col * TILE_SIZE &&
+        x < (r.col + r.w) * TILE_SIZE &&
+        y >= r.row * TILE_SIZE &&
+        y < (r.row + r.h) * TILE_SIZE
+      ) {
+        return piece;
+      }
+    }
+    return undefined;
+  }
+
+  // Follows the pointer: the piece to place snaps to the grid (red if it would not fit), or the
+  // piece under the pointer is outlined for removal.
+  private updateGhost(pointer: Phaser.Input.Pointer) {
+    const tool = this.tool;
+    if (tool?.kind === "item" && this.ghost) {
+      const { item } = tool;
+      const col = Math.round(pointer.worldX / TILE_SIZE - item.w / 2);
+      const row = Math.round(pointer.worldY / TILE_SIZE - item.h / 2);
+      this.ghostSpot = { col, row };
+      const bad = this.furnitureError(item, col, row);
+      this.ghost.setPosition(col * TILE_SIZE, row * TILE_SIZE).setVisible(true);
+      if (bad) this.ghost.setTint(0xff6b81);
+      else this.ghost.clearTint();
+    } else if (tool?.kind === "remove" && this.hoverBox) {
+      const piece = this.pieceAt(pointer.worldX, pointer.worldY);
+      const item = piece && findFurniture(piece.itemId);
+      if (!piece || !item) {
+        this.hoverBox.setVisible(false);
+        return;
+      }
+      this.hoverBox
+        .setPosition(piece.col * TILE_SIZE, piece.row * TILE_SIZE)
+        .setSize(item.w * TILE_SIZE, item.h * TILE_SIZE)
+        .setVisible(true);
+    }
+  }
+
+  private async useTool(pointer: Phaser.Input.Pointer) {
+    const { tool, connection } = this;
+    if (!tool || !connection) return;
+    this.updateGhost(pointer);
+    try {
+      if (tool.kind === "item") {
+        const spot = this.ghostSpot;
+        if (!spot) return;
+        const error = this.furnitureError(tool.item, spot.col, spot.row);
+        if (error) {
+          this.toast.show(error, "error", 2000);
+          return;
+        }
+        await connection.placeFurniture({ itemId: tool.item.id, ...spot });
+      } else {
+        const piece = this.pieceAt(pointer.worldX, pointer.worldY);
+        if (piece) await connection.removeFurniture(piece.id);
+      }
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 2500);
+    }
+  }
+
   private refreshTablePrompt(me: Position) {
     const userId = this.session?.user.id;
     if (!userId) return;
@@ -759,6 +946,8 @@ export class WorldScene extends Phaser.Scene {
         }
       });
       connection.onClaims((claims) => this.setClaims(claims));
+      connection.onFurniture((pieces) => this.syncFurniture(pieces));
+      this.decorate?.setAvailable(this.space ? canDecorate(this.space.role) : false);
       void this.startVoice(connection);
       connection.onDrop(() => {
         this.toast.show("Connection lost. Reconnecting…", "error");
@@ -862,6 +1051,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private dragMap(pointer: Phaser.Input.Pointer) {
+    if (this.tool) this.updateGhost(pointer);
     const press = this.press;
     if (!press || !this.me || !pointer.leftButtonDown()) return;
     if (!press.dragging && !isDrag(press.start, pointer)) return;
@@ -874,7 +1064,10 @@ export class WorldScene extends Phaser.Scene {
   private releaseMap(pointer: Phaser.Input.Pointer) {
     const clicked = this.press && !this.press.dragging;
     this.endPress();
-    if (clicked) this.walkToPoint({ x: pointer.worldX, y: pointer.worldY });
+    if (!clicked) return;
+    // Decorating: a click places or removes a piece instead of walking.
+    if (this.tool) void this.useTool(pointer);
+    else this.walkToPoint({ x: pointer.worldX, y: pointer.worldY });
   }
 
   private endPress() {

@@ -14,8 +14,16 @@ export class TableClaim extends Schema {
   @type("string") name = "";
 }
 
+export class Furniture extends Schema {
+  @type("string") itemId = "";
+  @type("number") col = 0;
+  @type("number") row = 0;
+}
+
 export class VoidState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   // Keyed by the table's id from the map.
   @type({ map: TableClaim }) tables = new MapSchema<TableClaim>();
+  // Keyed by the piece's id; placed by owners and admins.
+  @type({ map: Furniture }) furniture = new MapSchema<Furniture>();
 }

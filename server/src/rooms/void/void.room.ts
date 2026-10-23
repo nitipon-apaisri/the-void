@@ -3,7 +3,13 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 
 // shared
 import {
+  canDecorate,
   encodeLook,
+  findFurniture,
+  MAX_FURNITURE,
+  PLAYER_RADIUS,
+  placementError,
+  setBlocked,
   MAX_CLIENTS,
   MESSAGES,
   type ClaimTablePayload,
@@ -16,15 +22,17 @@ import {
 } from "@void/shared";
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
+import type { FurnitureRepository } from "../../repositories/furniture.repository.js";
 import type { TableRepository } from "../../repositories/table.repository.js";
 import type { UserRepository } from "../../repositories/user.repository.js";
 import type { AuthService } from "../../services/auth.service.js";
 import type { VoiceTokenService } from "../../services/voice-token.service.js";
 import { resolveSpawn } from "./handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
+import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
-import { Player, TableClaim, VoidState } from "./void.state.js";
+import { Furniture, Player, TableClaim, VoidState } from "./void.state.js";
 
 interface VoidRoomOptions {
   auth: AuthService;
@@ -33,6 +41,7 @@ interface VoidRoomOptions {
   grid: CollisionGrid;
   tables: MapTable[];
   claims: TableRepository;
+  furniture: FurnitureRepository;
   voiceTokens?: VoiceTokenService;
 }
 
@@ -53,6 +62,8 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   maxClients = MAX_CLIENTS;
   private options!: VoidRoomOptions;
   private spaceId = "";
+  // This space's own copy of the walls: placed furniture changes it.
+  private grid!: CollisionGrid;
   private readonly lastRefresh = new Map<string, number>();
   private readonly budgets = new Map<string, MoveBudget>();
   private readonly lastWave = new Map<string, number>();
@@ -63,6 +74,13 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.spaceId = options.spaceId;
     this.options = options;
     this.setState(new VoidState());
+    this.grid = { ...options.grid, blocked: [...options.grid.blocked] };
+    for (const piece of await options.furniture.list(this.spaceId)) {
+      const item = findFurniture(piece.itemId);
+      if (!item) continue;
+      this.state.furniture.set(piece.id, this.toFurniture(piece.itemId, piece.col, piece.row));
+      setBlocked(this.grid, item, piece.col, piece.row, true);
+    }
     for (const claim of await options.claims.listClaims(this.spaceId)) {
       // A claim on a desk the map no longer has stays in the database but is not shown.
       if (!options.tables.some((t) => t.id === claim.tableId)) continue;
@@ -111,6 +129,41 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       client.send(MESSAGES.WAVED, waved);
       this.clients.getById(request.targetId)?.send(MESSAGES.WAVED, waved);
     });
+    this.onMessage(MESSAGES.PLACE_FURNITURE, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parsePlace(payload);
+      if (!account || !canDecorate(account.role))
+        throw new Error("only owners and admins can decorate");
+      if (!request) throw new Error("invalid request");
+      if (this.state.furniture.size >= MAX_FURNITURE)
+        throw new Error("the space is full of furniture");
+      const { item, col, row } = request;
+      const error = this.placementError(item, col, row);
+      if (error) throw new Error(error);
+      const id = await options.furniture.add(this.spaceId, item.id, col, row, account.userId);
+      // Someone else may have placed something here while the database was working.
+      const late = this.placementError(item, col, row);
+      if (late) {
+        await options.furniture.remove(this.spaceId, id);
+        throw new Error(late);
+      }
+      setBlocked(this.grid, item, col, row, true);
+      this.state.furniture.set(id, this.toFurniture(item.id, col, row));
+      return true;
+    });
+    this.onMessage(MESSAGES.REMOVE_FURNITURE, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseRemove(payload);
+      if (!account || !canDecorate(account.role))
+        throw new Error("only owners and admins can decorate");
+      const piece = request && this.state.furniture.get(request.id);
+      if (!request || !piece) throw new Error("that piece is gone");
+      await options.furniture.remove(this.spaceId, request.id);
+      const item = findFurniture(piece.itemId);
+      if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
+      this.state.furniture.delete(request.id);
+      return true;
+    });
     this.onMessage(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {
       const player = this.state.players.get(client.sessionId);
       const request: ClaimTablePayload | null = parseClaim(payload);
@@ -141,7 +194,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const budget = this.budgets.get(client.sessionId);
       const pos = parseMove(payload);
       if (!player || !budget || !pos) return;
-      if (!acceptMove(options.grid, budget, player, pos, Date.now())) {
+      if (!acceptMove(this.grid, budget, player, pos, Date.now())) {
         // Walls and walking speed are the server's call: put the client back where we have them.
         client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
         return;
@@ -149,6 +202,26 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       player.x = pos.x;
       player.y = pos.y;
     });
+  }
+
+  private placementError(
+    item: NonNullable<ReturnType<typeof findFurniture>>,
+    col: number,
+    row: number,
+  ) {
+    return placementError(this.grid, item, col, row, {
+      people: [...this.state.players.values()],
+      personRadius: PLAYER_RADIUS,
+      tables: this.options.tables,
+    });
+  }
+
+  private toFurniture(itemId: string, col: number, row: number) {
+    const piece = new Furniture();
+    piece.itemId = itemId;
+    piece.col = col;
+    piece.row = row;
+    return piece;
   }
 
   private toClaim(userId: string, name: string) {
@@ -182,7 +255,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     player.userId = userId;
     player.name = name;
     player.look = encodeLook(look);
-    const spawn = resolveSpawn(lastX, lastY, this.options.grid);
+    const spawn = resolveSpawn(lastX, lastY, this.grid);
     player.x = spawn.x;
     player.y = spawn.y;
     this.state.players.set(client.sessionId, player);

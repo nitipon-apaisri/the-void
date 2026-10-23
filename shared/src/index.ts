@@ -1,4 +1,5 @@
 export const ROOM_NAME = "void";
+export * from "./furniture.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
@@ -131,6 +132,9 @@ export const MESSAGES = {
   // Client to server: wave at a nearby player. Server to both of them: the wave happened.
   WAVE: "wave",
   WAVED: "waved",
+  // Request/response, owners and admins only: place a piece of furniture, or take one away.
+  PLACE_FURNITURE: "place-furniture",
+  REMOVE_FURNITURE: "remove-furniture",
 } as const;
 
 export interface VoiceToken {

@@ -9,6 +9,9 @@ import {
   ROOM_NAME,
   type ClaimTablePayload,
   type JoinOptions,
+  type PlacedFurniture,
+  type PlaceFurniturePayload,
+  type RemoveFurniturePayload,
   type WavedPayload,
   type Look,
   type Position,
@@ -40,6 +43,11 @@ export interface VoidConnection {
   releaseTable(): Promise<void>;
   /** Fires with every current claim whenever one is added, changed or removed. */
   onClaims(cb: (claims: TableClaimSnapshot[]) => void): void;
+  /** Owners and admins only. Rejects with the server's reason (in the way, too many pieces). */
+  placeFurniture(piece: PlaceFurniturePayload): Promise<void>;
+  removeFurniture(id: string): Promise<void>;
+  /** Fires with every placed piece whenever one is added or removed. */
+  onFurniture(cb: (pieces: PlacedFurniture[]) => void): void;
   /** Wave at a player by session id; the room ignores it if they are too far or we waved just now. */
   wave(targetId: string): void;
   /** A wave happened that involves us, as the waver or the target. */
@@ -110,6 +118,25 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
       });
       tables.onRemove((_: any, tableId: string) => {
         claims.delete(tableId);
+        emit();
+      });
+    },
+    placeFurniture: async (piece) => {
+      await room.request(MESSAGES.PLACE_FURNITURE, piece);
+    },
+    removeFurniture: async (id) => {
+      await room.request(MESSAGES.REMOVE_FURNITURE, { id } satisfies RemoveFurniturePayload);
+    },
+    onFurniture: (cb) => {
+      const pieces = new Map<string, PlacedFurniture>();
+      const emit = () => cb([...pieces.values()]);
+      const furniture = $(room.state as any).furniture;
+      furniture.onAdd((f: any, id: string) => {
+        pieces.set(id, { id, itemId: f.itemId, col: f.col, row: f.row });
+        emit();
+      });
+      furniture.onRemove((_: any, id: string) => {
+        pieces.delete(id);
         emit();
       });
     },

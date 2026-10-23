@@ -18,6 +18,8 @@ export interface MinimapFrame {
 }
 
 export interface Minimap {
+  /** Redraws the walls after furniture changed them. */
+  refresh(): void;
   draw(frame: MinimapFrame): void;
   setVisible(visible: boolean): void;
   destroy(): void;
@@ -44,20 +46,24 @@ export function createMinimap(grid: CollisionGrid, onGo: (target: Position) => v
   const world = { width: grid.cols * grid.tileSize, height: grid.rows * grid.tileSize };
   const scale: MinimapScale = minimapScale(world, WIDTH);
 
-  // The walls never change, so they are drawn once and copied each frame.
+  // The walls only change when furniture is placed, so they are drawn then and copied each frame.
   const backdrop = document.createElement("canvas");
   backdrop.width = scale.width;
   backdrop.height = scale.height;
   const back = backdrop.getContext("2d")!;
-  back.fillStyle = SOLID;
   const tile = grid.tileSize * scale.factor;
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      if (grid.blocked[row * grid.cols + col]) {
-        back.fillRect(col * tile, row * tile, Math.ceil(tile), Math.ceil(tile));
+  const paintWalls = () => {
+    back.clearRect(0, 0, scale.width, scale.height);
+    back.fillStyle = SOLID;
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        if (grid.blocked[row * grid.cols + col]) {
+          back.fillRect(col * tile, row * tile, Math.ceil(tile), Math.ceil(tile));
+        }
       }
     }
-  }
+  };
+  paintWalls();
 
   const root = document.createElement("div");
   root.className = "void-minimap v-glass";
@@ -93,6 +99,7 @@ export function createMinimap(grid: CollisionGrid, onGo: (target: Position) => v
   };
 
   return {
+    refresh: paintWalls,
     draw({ me, others, view }) {
       if (root.hidden) return;
       ctx.clearRect(0, 0, scale.width, scale.height);

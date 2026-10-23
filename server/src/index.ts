@@ -9,6 +9,7 @@ import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
 import { createInviteRepository } from "./repositories/invite.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
+import { createFurnitureRepository } from "./repositories/furniture.repository.js";
 import { createTableRepository } from "./repositories/table.repository.js";
 import { createUserRepository } from "./repositories/user.repository.js";
 import { VoidRoom } from "./rooms/void/void.room.js";
@@ -39,6 +40,7 @@ const inviteService = createInviteService(createInviteRepository(pool), spaces);
 const grid = loadCollisionGrid(env.mapFile);
 const tables = loadTables(env.mapFile);
 const claims = createTableRepository(pool);
+const furniture = createFurnitureRepository(pool);
 
 const voiceTokens = createVoiceTokenService(env.livekit);
 if (!voiceTokens) console.warn("LiveKit is not configured; voice and video are disabled");
@@ -60,7 +62,16 @@ const gameServer = new Server({
 });
 // One room per space: players with the same `spaceId` option land in the same room.
 gameServer
-  .define(ROOM_NAME, VoidRoom, { voiceTokens, auth, users, spaces, grid, tables, claims })
+  .define(ROOM_NAME, VoidRoom, {
+    voiceTokens,
+    auth,
+    users,
+    spaces,
+    grid,
+    tables,
+    claims,
+    furniture,
+  })
   .filterBy(["spaceId"]);
 gameServer.onShutdown(() => pool.end());
 gameServer.listen(env.port).then(() => console.log(`colyseus listening on :${env.port}`));
