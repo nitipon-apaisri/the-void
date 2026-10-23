@@ -221,6 +221,12 @@ export class VoidRoom extends Room<{ state: VoidState }> {
         if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
         this.state.furniture.delete(id);
       }
+      // The map's own furniture is baked into the template, so emptying the space means moving
+      // it to the empty template. This room still holds the old map: close it and let clients
+      // rejoin a fresh one.
+      await options.spaces.setTemplate(this.spaceId, "empty");
+      this.broadcast(MESSAGES.SPACE_RESET);
+      this.clock.setTimeout(() => void this.disconnect(), 500);
       return true;
     });
     this.answer(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {

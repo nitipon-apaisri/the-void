@@ -119,9 +119,13 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   const reset = document.createElement("button");
   reset.type = "button";
   reset.className = "void-decor-remove";
-  reset.textContent = "Reset all decorations";
+  reset.textContent = "Empty the whole space";
   reset.addEventListener("click", () => {
-    if (window.confirm("Remove every piece placed in this space? This cannot be undone.")) {
+    if (
+      window.confirm(
+        "Empty this space? Every piece, including the desks, chairs and tables that came with the template, is removed and the room becomes a bare empty room. Desk claims are lost. This cannot be undone.",
+      )
+    ) {
       actions.onReset();
     }
   });

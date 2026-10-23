@@ -19,6 +19,7 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
     async findTemplate() {
       return "office";
     },
+    async setTemplate() {},
     async countOwned() {
       return owned;
     },

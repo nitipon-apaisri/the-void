@@ -31,6 +31,7 @@ export interface SpaceRepository {
   findSummary(spaceId: string, userId: string): Promise<SpaceSummary | undefined>;
   /** Which map the space uses; undefined for a space that does not exist. */
   findTemplate(spaceId: string): Promise<SpaceTemplate | undefined>;
+  setTemplate(spaceId: string, template: SpaceTemplate): Promise<void>;
 }
 
 interface SummaryRow {
@@ -150,6 +151,13 @@ export function createSpaceRepository(db: Queryable): SpaceRepository {
       );
       const template = rows[0]?.template;
       return isSpaceTemplate(template) ? template : undefined;
+    },
+
+    async setTemplate(spaceId, template) {
+      await db.query(
+        "update t_spaces set template = $2, updated_at = now() where id = $1 and deleted_at is null",
+        [spaceId, template],
+      );
     },
 
     async savePosition(spaceId, userId, x, y) {

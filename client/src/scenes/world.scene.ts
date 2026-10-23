@@ -799,7 +799,6 @@ export class WorldScene extends Phaser.Scene {
   private async resetDecorations() {
     try {
       await this.connection?.clearFurniture();
-      this.toast.show("Decorations removed", "info", 2000);
     } catch (err) {
       this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 2500);
     }
@@ -1020,6 +1019,11 @@ export class WorldScene extends Phaser.Scene {
         if (wave.toId === connection.sessionId) {
           this.toast.show(`${wave.name} waved at you 👋`, "info", 3500);
         }
+      });
+      connection.onSpaceReset(() => {
+        // The map changed under us; a fresh load rebuilds it from the stored template.
+        this.toast.show("This space was emptied. Reloading…", "info", 1500);
+        window.setTimeout(() => window.location.reload(), 800);
       });
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));

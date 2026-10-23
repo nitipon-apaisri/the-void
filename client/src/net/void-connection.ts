@@ -68,6 +68,8 @@ export interface VoidConnection {
   onPlayerRemove(cb: (id: string) => void): void;
   /** The server refused a move and says where we are. */
   onSnap(cb: (pos: Position) => void): void;
+  /** The space was emptied and now uses another map. */
+  onSpaceReset(cb: () => void): void;
   /** Connection lost; the SDK is trying to reconnect on its own. */
   onDrop(cb: () => void): void;
   /** The SDK's automatic reconnect succeeded. */
@@ -168,6 +170,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
       players.onAdd((p: any, id: string) => $(p).onChange(() => cb(snapshot(p, id)))),
     onPlayerRemove: (cb) => players.onRemove((_: any, id: string) => cb(id)),
     onSnap: (cb) => room.onMessage(MESSAGES.SNAP, cb),
+    onSpaceReset: (cb) => room.onMessage(MESSAGES.SPACE_RESET, cb),
     onDrop: (cb) =>
       room.onDrop(() => {
         if (!leaving) cb();

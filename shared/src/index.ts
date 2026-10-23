@@ -137,6 +137,8 @@ export const MESSAGES = {
   PLACE_FURNITURE: "place-furniture",
   REMOVE_FURNITURE: "remove-furniture",
   CLEAR_FURNITURE: "clear-furniture",
+  /** Sent to everyone when the space was emptied and its map changed; clients reload. */
+  SPACE_RESET: "space-reset",
   // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
   SIT: "sit",
   STAND: "stand",
