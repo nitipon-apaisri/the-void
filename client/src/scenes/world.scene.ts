@@ -6,6 +6,7 @@ import {
   SPAWN,
   TILE_SIZE,
   TABLES_LAYER,
+  WAVE_RANGE,
   canManageMembers,
   type AuthSession,
   type DesktopBridge,
@@ -25,6 +26,7 @@ import {
   PROXIMITY_CHECK_MS,
   MOVE_SEND_INTERVAL_MS,
   PLAYER_RADIUS,
+  PLAYER_RUN_SPEED,
   PLAYER_SPEED,
   REMOTE_TWEEN_MS,
   SERVER_URL,
@@ -67,6 +69,7 @@ import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
+import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
 import { createToast, type Toast } from "../ui/toast";
 import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
@@ -123,6 +126,10 @@ export class WorldScene extends Phaser.Scene {
   private readonly tableLabels = new Map<string, Phaser.GameObjects.Text>();
   private tablePromptView?: TablePromptView;
   private lastTablePrompt = 0;
+  private waveButton?: WaveButton;
+  private waveTarget?: string;
+  // True while the route came from "go to a person": that is quicker than walking.
+  private running = false;
   // Where a click is sending us: waypoints still to reach.
   private route: Position[] = [];
   // The zoom on screen. Settings keep a steady level; a pinch moves this in between.
@@ -158,6 +165,7 @@ export class WorldScene extends Phaser.Scene {
       (col, row) => collision.data[row][col].index > 0,
     );
     this.setUpTables(map);
+    this.waveButton = createWaveButton(() => this.waveAtTarget());
     this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
     this.mapControls = createMapControls({
       onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
@@ -204,6 +212,7 @@ export class WorldScene extends Phaser.Scene {
       this.minimap?.destroy();
       this.mapControls?.destroy();
       this.tablePromptView?.destroy();
+      this.waveButton?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -437,7 +446,11 @@ export class WorldScene extends Phaser.Scene {
       const sprite = id === userId ? this.others.get(sessionId) : undefined;
       if (!sprite) continue;
       const route = findPath(this.grid, me, sprite, PLAYER_RADIUS);
-      if (route.length > 0) this.route = route;
+      if (route.length > 0) {
+        this.followMe();
+        this.running = true;
+        this.route = route;
+      }
       return;
     }
   }
@@ -518,6 +531,23 @@ export class WorldScene extends Phaser.Scene {
       label.setText(claim.name).setVisible(true);
     }
     this.lastTablePrompt = 0;
+  }
+
+  // The nearest person in range gets the wave; the room checks the same range again.
+  private refreshWave(me: Position) {
+    const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
+    const nearest = sortByDistance(me, others, nearbyIds(me, others, WAVE_RANGE))[0];
+    this.waveTarget = nearest;
+    const name = nearest
+      ? this.members.find((m) => m.userId === this.accounts.get(nearest))?.name
+      : undefined;
+    this.waveButton?.show(nearest ? (name ?? "them") : undefined);
+  }
+
+  private waveAtTarget() {
+    const { connection, waveTarget } = this;
+    if (!connection || !waveTarget) return;
+    connection.wave(waveTarget);
   }
 
   private refreshTablePrompt(me: Position) {
@@ -720,6 +750,14 @@ export class WorldScene extends Phaser.Scene {
         this.tweens.add({ targets: sprite, x: p.x, y: p.y, duration: REMOTE_TWEEN_MS });
       });
       connection.onPlayerRemove((id) => this.removeOther(id));
+      connection.onWaved((wave) => {
+        const sprite =
+          wave.fromId === connection.sessionId ? this.me : this.others.get(wave.fromId);
+        sprite?.wave();
+        if (wave.toId === connection.sessionId) {
+          this.toast.show(`${wave.name} waved at you 👋`, "info", 3500);
+        }
+      });
       connection.onClaims((claims) => this.setClaims(claims));
       void this.startVoice(connection);
       connection.onDrop(() => {
@@ -850,6 +888,7 @@ export class WorldScene extends Phaser.Scene {
     this.followMe();
     const route = findPath(this.grid, me, point, PLAYER_RADIUS);
     if (route.length === 0) return;
+    this.running = false;
     this.route = route;
     const end = route[route.length - 1]!;
     const marker = this.add.circle(end.x, end.y, 6).setStrokeStyle(2, 0x8b93ff).setDepth(5);
@@ -897,18 +936,19 @@ export class WorldScene extends Phaser.Scene {
       },
       this.settings.keys,
     );
+    const speed = this.running && this.route.length > 0 ? PLAYER_RUN_SPEED : PLAYER_SPEED;
     // Pressing a movement key takes over from a click.
     if (dir.dx || dir.dy) {
       this.route = [];
       if (this.looseCamera) this.followMe();
     } else if (this.route.length > 0) {
-      const walk = followPath(this.route, me, PLAYER_SPEED * (delta / 1000));
+      const walk = followPath(this.route, me, speed * (delta / 1000));
       this.route = walk.rest;
       dir.dx = walk.dx;
       dir.dy = walk.dy;
     }
     if (dir.dx || dir.dy) {
-      const target = stepPosition(me, dir, PLAYER_SPEED, delta);
+      const target = stepPosition(me, dir, speed, delta);
       const next = moveWithCollision(this.grid, me, target, PLAYER_RADIUS);
       if (next.x !== me.x || next.y !== me.y) {
         me.step(dir.dx, dir.dy);
@@ -934,6 +974,7 @@ export class WorldScene extends Phaser.Scene {
     if (time - this.lastTablePrompt > 150) {
       this.lastTablePrompt = time;
       this.refreshTablePrompt(me);
+      this.refreshWave(me);
     }
 
     if (this.voice && time - this.lastProximity > PROXIMITY_CHECK_MS) {

@@ -65,6 +65,22 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     );
   }
 
+  /** A hand floats up over the head and fades. */
+  wave() {
+    const hand = this.scene.add
+      .text(0, NAME_OFFSET - 22, "👋", { fontSize: "22px" })
+      .setOrigin(0.5, 1);
+    this.add(hand);
+    this.scene.tweens.add({
+      targets: hand,
+      y: hand.y - 26,
+      alpha: 0,
+      duration: 1600,
+      ease: "Sine.easeOut",
+      onComplete: () => hand.destroy(),
+    });
+  }
+
   setNameVisible(visible: boolean) {
     this.label.setVisible(visible);
   }

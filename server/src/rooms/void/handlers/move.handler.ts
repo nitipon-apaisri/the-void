@@ -2,7 +2,7 @@
 import {
   collidesCircle,
   PLAYER_RADIUS,
-  PLAYER_SPEED,
+  PLAYER_RUN_SPEED,
   WORLD_HEIGHT,
   WORLD_WIDTH,
   type CollisionGrid,
@@ -20,17 +20,17 @@ export function parseMove(payload: unknown): MovePayload | null {
   return { x, y };
 }
 
-// A little over real speed, so a late frame or a bunched-up packet is not mistaken for cheating.
+// A little over the fastest speed (running to a person), so a late frame or a bunched-up packet is not mistaken for cheating.
 const SPEED_ALLOWANCE = 1.25;
 const BUDGET_SECONDS = 1;
 
 /**
- * How far a player may travel, as a bucket that refills at walking speed. Counting distance
+ * How far a player may travel, as a bucket that refills at running speed. Counting distance
  * rather than checking each step means sending moves faster gains nothing, and a delayed
  * packet that carries a longer step still passes.
  */
 export class MoveBudget {
-  private readonly max = PLAYER_SPEED * SPEED_ALLOWANCE * BUDGET_SECONDS;
+  private readonly max = PLAYER_RUN_SPEED * SPEED_ALLOWANCE * BUDGET_SECONDS;
   private budget = this.max;
   private last: number;
 
@@ -42,7 +42,7 @@ export class MoveBudget {
   spend(distance: number, now: number): boolean {
     const elapsed = Math.max(0, now - this.last) / 1000;
     this.last = now;
-    this.budget = Math.min(this.max, this.budget + PLAYER_SPEED * SPEED_ALLOWANCE * elapsed);
+    this.budget = Math.min(this.max, this.budget + PLAYER_RUN_SPEED * SPEED_ALLOWANCE * elapsed);
     if (distance > this.budget) return false;
     this.budget -= distance;
     return true;

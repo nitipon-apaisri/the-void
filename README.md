@@ -9,6 +9,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Invite links**: owners and admins share a link, optionally needing their approval; pending people appear in the People panel.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
+- **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
 - **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting.
@@ -33,11 +34,11 @@ Built and tried by hand:
 - [x] Bigger map (90 x 67 tiles), mini map and map buttons
 - [x] Server-side walls and speed limit
 - [x] Pinch or two-finger scroll to zoom, hold and drag to pan
-- [x] Claim a desk (one per person) and release it; the owner's name shows on it (server checked, not yet tried in the browser)
+- [x] Claim a desk (one per person) and release it; the owner's name shows on it (tried by hand)
+- [x] Wave at a nearby person; they get a toast (tried by hand)
 
 Planned (see [`PLAN.md`](PLAN.md)):
 
-- [ ] Waving to a nearby person
 - [ ] Decoration: place furniture
 - [ ] Change roles, remove members, kick and ban
 - [ ] Send each client only nearby players (needed for 100 people on this map)

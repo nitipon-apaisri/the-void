@@ -11,6 +11,7 @@ import {
   type JoinOptions,
   type Look,
   type MapTable,
+  type WavedPayload,
   type SpaceRole,
 } from "@void/shared";
 
@@ -22,6 +23,7 @@ import type { VoiceTokenService } from "../../services/voice-token.service.js";
 import { resolveSpawn } from "./handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
+import { canWave, parseWave } from "./handlers/wave.handler.js";
 import { Player, TableClaim, VoidState } from "./void.state.js";
 
 interface VoidRoomOptions {
@@ -53,6 +55,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private spaceId = "";
   private readonly lastRefresh = new Map<string, number>();
   private readonly budgets = new Map<string, MoveBudget>();
+  private readonly lastWave = new Map<string, number>();
 
   async onCreate(options: VoidRoomOptions & Partial<JoinOptions>) {
     // A made-up id would otherwise leave an empty room behind until it times out.
@@ -89,6 +92,24 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       for (const claim of this.state.tables.values()) {
         if (claim.userId === account.userId) claim.name = user.name;
       }
+    });
+    // Only the two people involved hear about it; nothing is kept in room state.
+    this.onMessage(MESSAGES.WAVE, (client, payload: unknown) => {
+      const request = parseWave(payload);
+      const from = this.state.players.get(client.sessionId);
+      const to = request && this.state.players.get(request.targetId);
+      const now = Date.now();
+      if (!request || !from || !to) return;
+      const self = request.targetId === client.sessionId;
+      if (!canWave(from, to, self, now, this.lastWave.get(client.sessionId))) return;
+      this.lastWave.set(client.sessionId, now);
+      const waved: WavedPayload = {
+        fromId: client.sessionId,
+        toId: request.targetId,
+        name: from.name,
+      };
+      client.send(MESSAGES.WAVED, waved);
+      this.clients.getById(request.targetId)?.send(MESSAGES.WAVED, waved);
     });
     this.onMessage(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {
       const player = this.state.players.get(client.sessionId);
@@ -173,6 +194,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.state.players.delete(client.sessionId);
     this.lastRefresh.delete(client.sessionId);
     this.budgets.delete(client.sessionId);
+    this.lastWave.delete(client.sessionId);
     if (!player || !client.auth) return;
     try {
       await this.options.spaces.savePosition(this.spaceId, client.auth.userId, player.x, player.y);

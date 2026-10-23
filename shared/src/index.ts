@@ -10,6 +10,9 @@ export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 // Movement. The server uses these to check a move is possible, the client to make it.
 export const PLAYER_SPEED = 180;
+// Going to a person from the People panel is quicker than walking. The server's speed limit
+// allows this much for everyone, so it is the ceiling a client can reach.
+export const PLAYER_RUN_SPEED = PLAYER_SPEED * 2;
 export const PLAYER_RADIUS = 12;
 
 // The middle of the central plaza.
@@ -125,6 +128,9 @@ export const MESSAGES = {
   // Request/response: claim one table by id, or give up the one you hold. A refusal rejects.
   CLAIM_TABLE: "claim-table",
   UNCLAIM_TABLE: "unclaim-table",
+  // Client to server: wave at a nearby player. Server to both of them: the wave happened.
+  WAVE: "wave",
+  WAVED: "waved",
 } as const;
 
 export interface VoiceToken {
@@ -138,6 +144,23 @@ export interface Position {
 }
 
 export type MovePayload = Position;
+
+// Waving. You can wave at someone within WAVE_RANGE. Spamming is allowed; the short gap (20 a
+// second) only stops a client from flooding the room.
+export const WAVE_RANGE = 4 * TILE_SIZE;
+export const WAVE_COOLDOWN_MS = 50;
+
+export interface WavePayload {
+  /** Session id of the player being waved at. */
+  targetId: string;
+}
+
+export interface WavedPayload {
+  fromId: string;
+  toId: string;
+  /** The waver's name, for the toast. */
+  name: string;
+}
 
 // Tables. Desks are objects on the map's "tables" layer (generated with the map); each user may
 // claim one per space. Claims live in the database and in room state, keyed by table id.

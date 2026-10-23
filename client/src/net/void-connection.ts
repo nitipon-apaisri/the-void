@@ -9,6 +9,7 @@ import {
   ROOM_NAME,
   type ClaimTablePayload,
   type JoinOptions,
+  type WavedPayload,
   type Look,
   type Position,
   type VoiceToken,
@@ -39,6 +40,10 @@ export interface VoidConnection {
   releaseTable(): Promise<void>;
   /** Fires with every current claim whenever one is added, changed or removed. */
   onClaims(cb: (claims: TableClaimSnapshot[]) => void): void;
+  /** Wave at a player by session id; the room ignores it if they are too far or we waved just now. */
+  wave(targetId: string): void;
+  /** A wave happened that involves us, as the waver or the target. */
+  onWaved(cb: (wave: WavedPayload) => void): void;
   /** Tell the room our name or look changed so everyone sees the new one. */
   refreshProfile(): void;
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
@@ -108,6 +113,8 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
         emit();
       });
     },
+    wave: (targetId) => room.send(MESSAGES.WAVE, { targetId }),
+    onWaved: (cb) => room.onMessage(MESSAGES.WAVED, cb),
     refreshProfile: () => room.send(MESSAGES.REFRESH_PROFILE),
     onPlayerAdd: (cb) => players.onAdd((p: any, id: string) => cb(snapshot(p, id))),
     onPlayerMove: (cb) =>

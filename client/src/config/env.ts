@@ -6,7 +6,7 @@ export const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? "ws://local
 export const API_URL = SERVER_URL.replace(/^ws/, "http");
 
 // The server checks moves against the same numbers.
-export { PLAYER_RADIUS, PLAYER_SPEED } from "@void/shared";
+export { PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_SPEED } from "@void/shared";
 // ~12 Hz position updates; remote players tween over REMOTE_TWEEN_MS to smooth them.
 export const MOVE_SEND_INTERVAL_MS = 80;
 export const REMOTE_TWEEN_MS = 100;
