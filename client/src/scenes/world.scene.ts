@@ -30,7 +30,7 @@ import { connectVoice, listMediaDevices, type VoiceConnection } from "../net/voi
 import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
 
 // systems
-import { stepZoom } from "../systems/zoom";
+import { effectiveZoom, stepZoom } from "../systems/zoom";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
 import { findPath, followPath } from "../systems/pathfinding";
@@ -110,6 +110,7 @@ export class WorldScene extends Phaser.Scene {
     );
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.applyGraphics();
+    this.scale.on(Phaser.Scale.Events.RESIZE, () => this.applyGraphics());
 
     this.keys = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
@@ -232,7 +233,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private applyGraphics() {
-    this.cameras.main.setZoom(this.settings.zoom);
+    const camera = this.cameras.main;
+    const bounds = camera.getBounds();
+    // Never smaller than the map, or a big window would show an empty border around it.
+    camera.setZoom(effectiveZoom(this.settings.zoom, this.scale, bounds));
     this.game.loop.targetFps = this.settings.maxFps;
   }
 

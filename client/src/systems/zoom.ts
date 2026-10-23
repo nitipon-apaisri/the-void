@@ -25,3 +25,13 @@ export function createWheelStepper(threshold: number) {
     return direction;
   };
 }
+
+/**
+ * The smallest zoom at which the map still fills the window, so no empty border shows when the
+ * window is bigger than the map. The chosen zoom is used when it is already larger.
+ */
+export const effectiveZoom = (
+  chosen: number,
+  view: { width: number; height: number },
+  map: { width: number; height: number },
+) => Math.max(chosen, view.width / map.width, view.height / map.height);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createWheelStepper, stepZoom } from "../systems/zoom";
+import { createWheelStepper, effectiveZoom, stepZoom } from "../systems/zoom";
 
 describe("stepZoom", () => {
   it("moves one level at a time", () => {
@@ -31,5 +31,22 @@ describe("createWheelStepper", () => {
     const step = createWheelStepper(40);
     expect(step(100)).toBe(-1);
     expect(step(-10)).toBe(0);
+  });
+});
+
+describe("effectiveZoom", () => {
+  const map = { width: 1280, height: 960 };
+
+  it("grows to fill a window bigger than the map", () => {
+    expect(effectiveZoom(1, { width: 1920, height: 1080 }, map)).toBe(1.5);
+    expect(effectiveZoom(1, { width: 1280, height: 1440 }, map)).toBe(1.5);
+  });
+
+  it("keeps the chosen zoom when it is already larger", () => {
+    expect(effectiveZoom(2, { width: 1920, height: 1080 }, map)).toBe(2);
+  });
+
+  it("keeps a small window at the chosen zoom", () => {
+    expect(effectiveZoom(1, { width: 800, height: 600 }, map)).toBe(1);
   });
 });
