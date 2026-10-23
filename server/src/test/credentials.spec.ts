@@ -6,7 +6,15 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@void/shared";
 
-import { normalizeEmail, parseLogin, parseRegistration } from "../common/credentials.js";
+import {
+  normalizeEmail,
+  parseDeletion,
+  parseEmailChange,
+  parseLogin,
+  parsePasswordChange,
+  parseProfile,
+  parseRegistration,
+} from "../common/credentials.js";
 
 const valid = {
   email: "  Alice@Example.com ",
@@ -75,5 +83,44 @@ describe("parseLogin", () => {
     expect(parseLogin({ email: "a@b.co", password: "x".repeat(MAX_PASSWORD_LENGTH + 1) }).ok).toBe(
       false,
     );
+  });
+});
+
+describe("account edit parsers", () => {
+  it("parseProfile trims the name and checks the avatar", () => {
+    expect(parseProfile({ name: " Al ", avatar: 0 })).toEqual({
+      ok: true,
+      value: { name: "Al", avatar: 0 },
+    });
+    expect(parseProfile({ name: "", avatar: 0 }).ok).toBe(false);
+    expect(parseProfile({ name: "Al", avatar: AVATAR_COLORS.length }).ok).toBe(false);
+    expect(parseProfile({ name: "x".repeat(MAX_NAME_LENGTH + 1), avatar: 0 }).ok).toBe(false);
+  });
+
+  it("parsePasswordChange applies the password policy to the new password only", () => {
+    const longEnough = "a".repeat(MIN_PASSWORD_LENGTH);
+    expect(parsePasswordChange({ currentPassword: "old", newPassword: longEnough }).ok).toBe(true);
+    expect(parsePasswordChange({ currentPassword: "old", newPassword: "short" }).ok).toBe(false);
+    expect(parsePasswordChange({ currentPassword: "", newPassword: longEnough }).ok).toBe(false);
+    expect(
+      parsePasswordChange({
+        currentPassword: "old",
+        newPassword: "a".repeat(MAX_PASSWORD_LENGTH + 1),
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("parseEmailChange normalises the email", () => {
+    expect(parseEmailChange({ currentPassword: "pw", email: " Bob@Example.com " })).toEqual({
+      ok: true,
+      value: { currentPassword: "pw", email: "bob@example.com" },
+    });
+    expect(parseEmailChange({ currentPassword: "pw", email: "nope" }).ok).toBe(false);
+  });
+
+  it("parseDeletion needs a password", () => {
+    expect(parseDeletion({ password: "pw" }).ok).toBe(true);
+    expect(parseDeletion({}).ok).toBe(false);
+    expect(parseDeletion(null).ok).toBe(false);
   });
 });

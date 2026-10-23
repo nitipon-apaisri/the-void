@@ -5,8 +5,17 @@ import { rateLimit } from "express-rate-limit";
 // shared
 import { AUTH_ROUTES, type ApiError } from "@void/shared";
 
-import { parseLogin, parseRegistration, type Parsed } from "../common/credentials.js";
-import { AuthError, type AuthService } from "../services/auth.service.js";
+import {
+  parseDeletion,
+  parseEmailChange,
+  parseLogin,
+  parsePasswordChange,
+  parseProfile,
+  parseRegistration,
+  type Parsed,
+} from "../common/credentials.js";
+import type { UserRecord } from "../repositories/user.repository.js";
+import { AuthError, toProfile, type AuthService } from "../services/auth.service.js";
 
 interface Options {
   auth: AuthService;
@@ -32,7 +41,7 @@ export function mountAuthRoutes(app: Application, { auth, corsOrigins, trustProx
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     }
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
@@ -50,25 +59,44 @@ export function mountAuthRoutes(app: Application, { auth, corsOrigins, trustProx
   });
   const json = express.json({ limit: BODY_LIMIT });
 
-  const handle =
-    <T>(parse: (body: unknown) => Parsed<T>, run: (value: T) => Promise<unknown>) =>
-    async (req: Request, res: Response) => {
-      const parsed = parse(req.body);
-      if (!parsed.ok) {
-        res.status(400).json({ error: parsed.error } satisfies ApiError);
+  const respond = async (res: Response, work: () => Promise<unknown>) => {
+    try {
+      res.json(await work());
+    } catch (err) {
+      if (err instanceof AuthError) {
+        res.status(err.status).json({ error: err.message } satisfies ApiError);
         return;
       }
-      try {
-        res.json(await run(parsed.value));
-      } catch (err) {
-        if (err instanceof AuthError) {
-          res.status(err.status).json({ error: err.message } satisfies ApiError);
-          return;
-        }
-        console.error("auth request failed", err instanceof Error ? err.message : err);
-        res.status(500).json({ error: "something went wrong" } satisfies ApiError);
-      }
-    };
+      console.error("auth request failed", err instanceof Error ? err.message : err);
+      res.status(500).json({ error: "something went wrong" } satisfies ApiError);
+    }
+  };
+
+  const parseOrFail = <T>(parse: (body: unknown) => Parsed<T>, body: unknown): T => {
+    const parsed = parse(body);
+    if (!parsed.ok) throw new AuthError(400, parsed.error);
+    return parsed.value;
+  };
+
+  const handle =
+    <T>(parse: (body: unknown) => Parsed<T>, run: (value: T) => Promise<unknown>) =>
+    (req: Request, res: Response) =>
+      respond(res, () => run(parseOrFail(parse, req.body)));
+
+  // The token is checked before the body, so an anonymous caller learns nothing about the shape.
+  const handleAuthed =
+    <T>(
+      parse: (body: unknown) => Parsed<T>,
+      run: (value: T, user: UserRecord) => Promise<unknown>,
+    ) =>
+    (req: Request, res: Response) =>
+      respond(res, async () => {
+        const user = await auth.authenticate(bearer(req));
+        if (!user) throw new AuthError(401, "not signed in");
+        return run(parseOrFail(parse, req.body), user);
+      });
+
+  const anyBody = (): Parsed<null> => ({ ok: true, value: null });
 
   app.post(
     AUTH_ROUTES.REGISTER,
@@ -83,12 +111,41 @@ export function mountAuthRoutes(app: Application, { auth, corsOrigins, trustProx
     handle(parseLogin, (v) => auth.login(v)),
   );
 
-  app.get(AUTH_ROUTES.ME, async (req, res) => {
-    const user = await auth.authenticate(bearer(req));
-    if (!user) {
-      res.status(401).json({ error: "not signed in" } satisfies ApiError);
-      return;
-    }
-    res.json({ id: user.id, name: user.name, avatar: user.avatar });
-  });
+  // Not rate limited: the client calls it on every start, and it cannot guess a password.
+  app.get(
+    AUTH_ROUTES.ME,
+    handleAuthed(anyBody, async (_, user) => toProfile(user)),
+  );
+  app.patch(
+    AUTH_ROUTES.ME,
+    limiter,
+    json,
+    handleAuthed(parseProfile, (v, user) => auth.updateProfile(user, v)),
+  );
+  app.delete(
+    AUTH_ROUTES.ME,
+    limiter,
+    json,
+    handleAuthed(parseDeletion, async (v, user) => {
+      await auth.deleteAccount(user, v.password);
+      return {};
+    }),
+  );
+  app.post(
+    AUTH_ROUTES.EMAIL,
+    limiter,
+    json,
+    handleAuthed(parseEmailChange, (v, user) => auth.changeEmail(user, v)),
+  );
+  app.post(
+    AUTH_ROUTES.PASSWORD,
+    limiter,
+    json,
+    handleAuthed(parsePasswordChange, (v, user) => auth.changePassword(user, v)),
+  );
+  app.post(
+    AUTH_ROUTES.SIGN_OUT_OTHERS,
+    limiter,
+    handleAuthed(anyBody, (_, user) => auth.signOutOthers(user)),
+  );
 }

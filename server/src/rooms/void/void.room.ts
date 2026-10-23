@@ -17,6 +17,8 @@ interface VoidRoomOptions {
   voiceTokens?: VoiceTokenService;
 }
 
+const REFRESH_MS = 1000;
+
 /** What onAuth hands to onJoin and onLeave through `client.auth`. */
 interface Account {
   userId: string;
@@ -29,6 +31,7 @@ interface Account {
 export class VoidRoom extends Room<{ state: VoidState }> {
   maxClients = MAX_CLIENTS;
   private options!: VoidRoomOptions;
+  private readonly lastRefresh = new Map<string, number>();
 
   onCreate(options: VoidRoomOptions) {
     this.options = options;
@@ -39,6 +42,21 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!player) throw new Error("not joined");
       if (!options.voiceTokens) throw new Error("voice unavailable");
       return options.voiceTokens.issue(client.sessionId, player.name);
+    });
+    // The edit itself happened over HTTP; this only copies the stored result into room state.
+    this.onMessage(MESSAGES.REFRESH_PROFILE, async (client) => {
+      const player = this.state.players.get(client.sessionId);
+      const account = (client as Client<{ auth: Account }>).auth;
+      const now = Date.now();
+      // One database read per message, so a client spamming it cannot turn into read load.
+      if (!player || !account || now - (this.lastRefresh.get(client.sessionId) ?? 0) < REFRESH_MS) {
+        return;
+      }
+      this.lastRefresh.set(client.sessionId, now);
+      const user = await options.users.findById(account.userId);
+      if (!user) return;
+      player.name = user.name;
+      player.avatar = user.avatar;
     });
     this.onMessage(MESSAGES.MOVE, (client, payload) => {
       const player = this.state.players.get(client.sessionId);
@@ -78,6 +96,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   async onLeave(client: Client<{ auth: Account }>) {
     const player = this.state.players.get(client.sessionId);
     this.state.players.delete(client.sessionId);
+    this.lastRefresh.delete(client.sessionId);
     if (!player || !client.auth) return;
     try {
       await this.options.users.savePosition(client.auth.userId, player.x, player.y);

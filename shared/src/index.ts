@@ -21,6 +21,8 @@ export const MESSAGES = {
   MOVE: "move",
   // Request/response: the room answers with a VoiceToken.
   VOICE_TOKEN: "voice-token",
+  // After an account edit over HTTP: the room re-reads the name and avatar from the database.
+  REFRESH_PROFILE: "refresh-profile",
 } as const;
 
 export interface VoiceToken {
@@ -44,13 +46,34 @@ export const MAX_EMAIL_LENGTH = 254;
 export const AUTH_ROUTES = {
   REGISTER: "/auth/register",
   LOGIN: "/auth/login",
+  // GET reads the profile, PATCH edits it, DELETE closes the account.
   ME: "/auth/me",
+  PASSWORD: "/auth/password",
+  EMAIL: "/auth/email",
+  SIGN_OUT_OTHERS: "/auth/sign-out-others",
 } as const;
 
 export interface UserProfile {
   id: string;
+  email: string;
   name: string;
   avatar: number;
+}
+
+export type UpdateProfilePayload = Pick<RegisterPayload, "name" | "avatar">;
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangeEmailPayload {
+  currentPassword: string;
+  email: string;
+}
+
+export interface DeleteAccountPayload {
+  password: string;
 }
 
 export interface LoginPayload {

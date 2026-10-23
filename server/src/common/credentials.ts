@@ -5,8 +5,12 @@ import {
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
+  type ChangeEmailPayload,
+  type ChangePasswordPayload,
+  type DeleteAccountPayload,
   type LoginPayload,
   type RegisterPayload,
+  type UpdateProfilePayload,
 } from "@void/shared";
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -34,32 +38,74 @@ export function parseLogin(body: unknown): Parsed<LoginPayload> {
   return { ok: true, value: { email, password: body.password } };
 }
 
+const checkNewPassword = (password: unknown): string | undefined => {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    return `password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `password must be at most ${MAX_PASSWORD_LENGTH} characters`;
+  }
+  return undefined;
+};
+
+const parseName = (raw: unknown): string | undefined => {
+  const name = typeof raw === "string" ? raw.trim() : "";
+  return name && name.length <= MAX_NAME_LENGTH ? name : undefined;
+};
+
+const parseAvatar = (raw: unknown): number | undefined =>
+  Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) < AVATAR_COLORS.length
+    ? (raw as number)
+    : undefined;
+
+// A current password is only checked for presence and size here; the service verifies it.
+const parseCurrentPassword = (raw: unknown): string | undefined =>
+  typeof raw === "string" && raw.length > 0 && raw.length <= MAX_PASSWORD_LENGTH ? raw : undefined;
+
 export function parseRegistration(body: unknown): Parsed<RegisterPayload> {
   if (!isObject(body)) return fail("invalid request");
   const email = normalizeEmail(body.email);
   if (!email) return fail("enter a valid email address");
 
-  const { password } = body;
-  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
-    return fail(`password must be at least ${MIN_PASSWORD_LENGTH} characters`);
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return fail(`password must be at most ${MAX_PASSWORD_LENGTH} characters`);
-  }
+  const passwordError = checkNewPassword(body.password);
+  if (passwordError) return fail(passwordError);
 
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name || name.length > MAX_NAME_LENGTH) {
-    return fail(`name must be 1 to ${MAX_NAME_LENGTH} characters`);
-  }
+  const profile = parseProfile(body);
+  if (!profile.ok) return profile;
 
-  const { avatar } = body;
-  if (
-    !Number.isInteger(avatar) ||
-    (avatar as number) < 0 ||
-    (avatar as number) >= AVATAR_COLORS.length
-  ) {
-    return fail("pick an avatar colour");
-  }
+  return { ok: true, value: { email, password: body.password as string, ...profile.value } };
+}
 
-  return { ok: true, value: { email, password, name, avatar: avatar as number } };
+export function parseProfile(body: unknown): Parsed<UpdateProfilePayload> {
+  if (!isObject(body)) return fail("invalid request");
+  const name = parseName(body.name);
+  if (!name) return fail(`name must be 1 to ${MAX_NAME_LENGTH} characters`);
+  const avatar = parseAvatar(body.avatar);
+  if (avatar === undefined) return fail("pick an avatar colour");
+  return { ok: true, value: { name, avatar } };
+}
+
+export function parsePasswordChange(body: unknown): Parsed<ChangePasswordPayload> {
+  if (!isObject(body)) return fail("invalid request");
+  const currentPassword = parseCurrentPassword(body.currentPassword);
+  if (!currentPassword) return fail("enter your current password");
+  const passwordError = checkNewPassword(body.newPassword);
+  if (passwordError) return fail(passwordError);
+  return { ok: true, value: { currentPassword, newPassword: body.newPassword as string } };
+}
+
+export function parseEmailChange(body: unknown): Parsed<ChangeEmailPayload> {
+  if (!isObject(body)) return fail("invalid request");
+  const currentPassword = parseCurrentPassword(body.currentPassword);
+  if (!currentPassword) return fail("enter your current password");
+  const email = normalizeEmail(body.email);
+  if (!email) return fail("enter a valid email address");
+  return { ok: true, value: { currentPassword, email } };
+}
+
+export function parseDeletion(body: unknown): Parsed<DeleteAccountPayload> {
+  if (!isObject(body)) return fail("invalid request");
+  const password = parseCurrentPassword(body.password);
+  if (!password) return fail("enter your password");
+  return { ok: true, value: { password } };
 }
