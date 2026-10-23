@@ -122,6 +122,9 @@ export const MESSAGES = {
   REFRESH_PROFILE: "refresh-profile",
   // Server to client: a move was refused, so the client puts the player back where the server has them.
   SNAP: "snap",
+  // Request/response: claim one table by id, or give up the one you hold. A refusal rejects.
+  CLAIM_TABLE: "claim-table",
+  UNCLAIM_TABLE: "unclaim-table",
 } as const;
 
 export interface VoiceToken {
@@ -135,6 +138,48 @@ export interface Position {
 }
 
 export type MovePayload = Position;
+
+// Tables. Desks are objects on the map's "tables" layer (generated with the map); each user may
+// claim one per space. Claims live in the database and in room state, keyed by table id.
+export const TABLES_LAYER = "tables";
+// How far outside a table's rectangle you may stand and still claim it. 0: you must be inside it.
+export const CLAIM_RANGE_TILES = 0;
+
+/** A claimable desk: a rectangle in world pixels. */
+export interface MapTable {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ClaimTablePayload {
+  tableId: string;
+}
+
+/** Distance from a point to the nearest edge of a table (0 inside it). */
+export const distanceToTable = (table: MapTable, pos: Position): number =>
+  Math.hypot(
+    Math.max(table.x - pos.x, 0, pos.x - (table.x + table.width)),
+    Math.max(table.y - pos.y, 0, pos.y - (table.y + table.height)),
+  );
+
+/** The closest table within claiming range, if any. */
+export function tableInRange(tables: readonly MapTable[], pos: Position): MapTable | undefined {
+  const range = CLAIM_RANGE_TILES * TILE_SIZE;
+  let best: MapTable | undefined;
+  let bestDistance = Infinity;
+  for (const table of tables) {
+    const d = distanceToTable(table, pos);
+    if (d <= range && d < bestDistance) {
+      best = table;
+      bestDistance = d;
+    }
+  }
+  return best;
+}
 
 // Accounts. Email and password live on the server; the client only ever holds a signed token.
 export const MIN_PASSWORD_LENGTH = 10;

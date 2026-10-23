@@ -6,25 +6,31 @@ import {
   encodeLook,
   MAX_CLIENTS,
   MESSAGES,
+  type ClaimTablePayload,
   type CollisionGrid,
   type JoinOptions,
   type Look,
+  type MapTable,
   type SpaceRole,
 } from "@void/shared";
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
+import type { TableRepository } from "../../repositories/table.repository.js";
 import type { UserRepository } from "../../repositories/user.repository.js";
 import type { AuthService } from "../../services/auth.service.js";
 import type { VoiceTokenService } from "../../services/voice-token.service.js";
 import { resolveSpawn } from "./handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
-import { Player, VoidState } from "./void.state.js";
+import { checkClaim, parseClaim } from "./handlers/table.handler.js";
+import { Player, TableClaim, VoidState } from "./void.state.js";
 
 interface VoidRoomOptions {
   auth: AuthService;
   users: UserRepository;
   spaces: SpaceRepository;
   grid: CollisionGrid;
+  tables: MapTable[];
+  claims: TableRepository;
   voiceTokens?: VoiceTokenService;
 }
 
@@ -48,12 +54,17 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private readonly lastRefresh = new Map<string, number>();
   private readonly budgets = new Map<string, MoveBudget>();
 
-  onCreate(options: VoidRoomOptions & Partial<JoinOptions>) {
+  async onCreate(options: VoidRoomOptions & Partial<JoinOptions>) {
     // A made-up id would otherwise leave an empty room behind until it times out.
     if (!isUuid(options.spaceId)) throw new ServerError(400, "unknown space");
     this.spaceId = options.spaceId;
     this.options = options;
     this.setState(new VoidState());
+    for (const claim of await options.claims.listClaims(this.spaceId)) {
+      // A claim on a desk the map no longer has stays in the database but is not shown.
+      if (!options.tables.some((t) => t.id === claim.tableId)) continue;
+      this.state.tables.set(claim.tableId, this.toClaim(claim.userId, claim.name));
+    }
     // Only joined players can ask, and the identity is their session id, never client-supplied.
     this.onMessage(MESSAGES.VOICE_TOKEN, async (client) => {
       const player = this.state.players.get(client.sessionId);
@@ -75,6 +86,34 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!user) return;
       player.name = user.name;
       player.look = encodeLook(user.look);
+      for (const claim of this.state.tables.values()) {
+        if (claim.userId === account.userId) claim.name = user.name;
+      }
+    });
+    this.onMessage(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const request: ClaimTablePayload | null = parseClaim(payload);
+      if (!player || !request) throw new Error("invalid request");
+      const check = checkClaim(
+        options.tables,
+        this.state.tables,
+        player.userId,
+        request.tableId,
+        player,
+      );
+      if (!check.ok) throw new Error(check.error);
+      if (!(await options.claims.claim(this.spaceId, request.tableId, player.userId))) {
+        throw new Error("that desk is taken");
+      }
+      this.state.tables.set(request.tableId, this.toClaim(player.userId, player.name));
+      return true;
+    });
+    this.onMessage(MESSAGES.UNCLAIM_TABLE, async (client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) throw new Error("not joined");
+      const tableId = await options.claims.release(this.spaceId, player.userId);
+      if (tableId) this.state.tables.delete(tableId);
+      return true;
     });
     this.onMessage(MESSAGES.MOVE, (client, payload) => {
       const player = this.state.players.get(client.sessionId);
@@ -89,6 +128,13 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       player.x = pos.x;
       player.y = pos.y;
     });
+  }
+
+  private toClaim(userId: string, name: string) {
+    const claim = new TableClaim();
+    claim.userId = userId;
+    claim.name = name;
+    return claim;
   }
 
   // Who you are comes from the signed token, and whether you may be here from the member list.

@@ -5,11 +5,13 @@ import Phaser from "phaser";
 import {
   SPAWN,
   TILE_SIZE,
+  TABLES_LAYER,
   canManageMembers,
   type AuthSession,
   type DesktopBridge,
   type JoinRequest,
   type Look,
+  type MapTable,
   type Position,
   type SpaceMember,
   type SpaceSummary,
@@ -36,6 +38,7 @@ import {
   NotInSpaceError,
   NotSignedInError,
   connectToVoid,
+  type TableClaimSnapshot,
   type VoidConnection,
 } from "../net/void-connection";
 
@@ -48,6 +51,7 @@ import { findPath, followPath } from "../systems/pathfinding";
 import { stepPosition } from "../systems/movement";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
+import { tablePrompt, type Claim } from "../systems/tables";
 
 // objects
 import { PlayerSprite } from "../objects/player";
@@ -63,6 +67,7 @@ import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
+import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
 import { createToast, type Toast } from "../ui/toast";
 import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
@@ -113,6 +118,11 @@ export class WorldScene extends Phaser.Scene {
   private mapControls?: MapControls;
   private minimapShown = true;
   private lastMinimap = 0;
+  private tables: MapTable[] = [];
+  private claims = new Map<string, Claim>();
+  private readonly tableLabels = new Map<string, Phaser.GameObjects.Text>();
+  private tablePromptView?: TablePromptView;
+  private lastTablePrompt = 0;
   // Where a click is sending us: waypoints still to reach.
   private route: Position[] = [];
   // The zoom on screen. Settings keep a steady level; a pinch moves this in between.
@@ -147,6 +157,7 @@ export class WorldScene extends Phaser.Scene {
       map.tileWidth,
       (col, row) => collision.data[row][col].index > 0,
     );
+    this.setUpTables(map);
     this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
     this.mapControls = createMapControls({
       onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
@@ -192,6 +203,7 @@ export class WorldScene extends Phaser.Scene {
       this.zoomControls?.destroy();
       this.minimap?.destroy();
       this.mapControls?.destroy();
+      this.tablePromptView?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -467,6 +479,89 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
+  // Desks come from the map's object layer; the server reads the same layer to check claims.
+  private setUpTables(map: Phaser.Tilemaps.Tilemap) {
+    this.tables = (map.getObjectLayer(TABLES_LAYER)?.objects ?? []).map((o) => ({
+      id: String(o.id),
+      name: o.name || `Desk ${o.id}`,
+      x: o.x ?? 0,
+      y: o.y ?? 0,
+      width: o.width ?? TILE_SIZE,
+      height: o.height ?? TILE_SIZE,
+    }));
+    this.tablePromptView = createTablePrompt({
+      onClaim: (tableId) => void this.claimTable(tableId),
+      onRelease: () => void this.releaseTable(),
+    });
+  }
+
+  private setClaims(list: readonly TableClaimSnapshot[]) {
+    this.claims = new Map(list.map((c) => [c.tableId, { userId: c.userId, name: c.name }]));
+    for (const table of this.tables) {
+      const claim = this.claims.get(table.id);
+      let label = this.tableLabels.get(table.id);
+      if (!claim) {
+        label?.setVisible(false);
+        continue;
+      }
+      // On the desk top, under players so you can still walk in front of it.
+      label ??= this.add
+        .text(table.x + table.width / 2, table.y + TILE_SIZE * 1.5, "", {
+          color: "#ffffff",
+          fontSize: "11px",
+          stroke: "#0b0d14",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setDepth(5);
+      this.tableLabels.set(table.id, label);
+      label.setText(claim.name).setVisible(true);
+    }
+    this.lastTablePrompt = 0;
+  }
+
+  private refreshTablePrompt(me: Position) {
+    const userId = this.session?.user.id;
+    if (!userId) return;
+    this.tablePromptView?.show(tablePrompt(this.tables, this.claims, userId, me));
+  }
+
+  private async claimTable(tableId: string) {
+    const connection = this.connection;
+    if (!connection) return;
+    this.tablePromptView?.setBusy(true);
+    try {
+      await connection.claimTable(tableId);
+      const name = this.tables.find((t) => t.id === tableId)?.name ?? "The desk";
+      this.toast.show(`${name} is yours`, "success", 2500);
+    } catch (err) {
+      this.toast.show(
+        err instanceof Error ? err.message : "Could not claim that desk",
+        "error",
+        3500,
+      );
+    } finally {
+      this.tablePromptView?.setBusy(false);
+    }
+  }
+
+  private async releaseTable() {
+    const connection = this.connection;
+    if (!connection) return;
+    this.tablePromptView?.setBusy(true);
+    try {
+      await connection.releaseTable();
+    } catch (err) {
+      this.toast.show(
+        err instanceof Error ? err.message : "Could not release that desk",
+        "error",
+        3500,
+      );
+    } finally {
+      this.tablePromptView?.setBusy(false);
+    }
+  }
+
   private spawnPlayer(x: number, y: number, name: string, look: Look) {
     const player = new PlayerSprite(this, x, y, name, look);
     player.setNameVisible(this.settings.showNames);
@@ -625,6 +720,7 @@ export class WorldScene extends Phaser.Scene {
         this.tweens.add({ targets: sprite, x: p.x, y: p.y, duration: REMOTE_TWEEN_MS });
       });
       connection.onPlayerRemove((id) => this.removeOther(id));
+      connection.onClaims((claims) => this.setClaims(claims));
       void this.startVoice(connection);
       connection.onDrop(() => {
         this.toast.show("Connection lost. Reconnecting…", "error");
@@ -833,6 +929,11 @@ export class WorldScene extends Phaser.Scene {
         others: [...this.others.values()],
         view: this.cameras.main.worldView,
       });
+    }
+
+    if (time - this.lastTablePrompt > 150) {
+      this.lastTablePrompt = time;
+      this.refreshTablePrompt(me);
     }
 
     if (this.voice && time - this.lastProximity > PROXIMITY_CHECK_MS) {

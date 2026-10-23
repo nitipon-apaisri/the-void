@@ -9,13 +9,14 @@ import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
 import { createInviteRepository } from "./repositories/invite.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
+import { createTableRepository } from "./repositories/table.repository.js";
 import { createUserRepository } from "./repositories/user.repository.js";
 import { VoidRoom } from "./rooms/void/void.room.js";
 import { mountAuthRoutes } from "./routes/auth.routes.js";
 import { mountInviteRoutes } from "./routes/invite.routes.js";
 import { mountSpaceRoutes } from "./routes/space.routes.js";
 import { createAuthService } from "./services/auth.service.js";
-import { loadCollisionGrid } from "./services/map.service.js";
+import { loadCollisionGrid, loadTables } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
 import { createInviteService } from "./services/invite.service.js";
 import { createSpaceService } from "./services/space.service.js";
@@ -36,6 +37,8 @@ const spaceService = createSpaceService(spaces);
 const inviteService = createInviteService(createInviteRepository(pool), spaces);
 // Read once: the map is shared by every space for now, and a bad file should stop the start.
 const grid = loadCollisionGrid(env.mapFile);
+const tables = loadTables(env.mapFile);
+const claims = createTableRepository(pool);
 
 const voiceTokens = createVoiceTokenService(env.livekit);
 if (!voiceTokens) console.warn("LiveKit is not configured; voice and video are disabled");
@@ -57,7 +60,7 @@ const gameServer = new Server({
 });
 // One room per space: players with the same `spaceId` option land in the same room.
 gameServer
-  .define(ROOM_NAME, VoidRoom, { voiceTokens, auth, users, spaces, grid })
+  .define(ROOM_NAME, VoidRoom, { voiceTokens, auth, users, spaces, grid, tables, claims })
   .filterBy(["spaceId"]);
 gameServer.onShutdown(() => pool.end());
 gameServer.listen(env.port).then(() => console.log(`colyseus listening on :${env.port}`));

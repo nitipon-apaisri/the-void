@@ -2,7 +2,15 @@
 import { readFileSync } from "node:fs";
 
 // shared
-import { createGrid, MAP_COLS, MAP_ROWS, TILE_SIZE, type CollisionGrid } from "@void/shared";
+import {
+  createGrid,
+  MAP_COLS,
+  MAP_ROWS,
+  TABLES_LAYER,
+  TILE_SIZE,
+  type CollisionGrid,
+  type MapTable,
+} from "@void/shared";
 
 interface TiledLayer {
   name?: unknown;
@@ -35,4 +43,34 @@ export function parseCollisionGrid(tmj: unknown): CollisionGrid {
 
 export function loadCollisionGrid(file: string | URL): CollisionGrid {
   return parseCollisionGrid(JSON.parse(readFileSync(file, "utf8")));
+}
+
+/** The claimable desks from the map's "tables" layer. A map without one simply has none. */
+export function parseTables(tmj: unknown): MapTable[] {
+  const layers = (tmj as { layers?: unknown })?.layers;
+  const layer = (Array.isArray(layers) ? (layers as TiledLayer[]) : []).find(
+    (l) => l.name === TABLES_LAYER,
+  );
+  const objects = Array.isArray((layer as { objects?: unknown })?.objects)
+    ? ((layer as { objects: unknown[] }).objects as Record<string, unknown>[])
+    : [];
+  const tables: MapTable[] = [];
+  for (const o of objects) {
+    const { id, name, x, y, width, height } = o;
+    if (typeof id !== "number" || !Number.isInteger(id)) continue;
+    if (![x, y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))) continue;
+    tables.push({
+      id: String(id),
+      name: typeof name === "string" && name ? name : `Desk ${id}`,
+      x: x as number,
+      y: y as number,
+      width: width as number,
+      height: height as number,
+    });
+  }
+  return tables;
+}
+
+export function loadTables(file: string | URL): MapTable[] {
+  return parseTables(JSON.parse(readFileSync(file, "utf8")));
 }

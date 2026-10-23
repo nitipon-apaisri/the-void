@@ -9,6 +9,13 @@ export class Player extends Schema {
   @type("number") y = 0;
 }
 
+export class TableClaim extends Schema {
+  @type("string") userId = "";
+  @type("string") name = "";
+}
+
 export class VoidState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
+  // Keyed by the table's id from the map.
+  @type({ map: TableClaim }) tables = new MapSchema<TableClaim>();
 }

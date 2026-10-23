@@ -7,11 +7,18 @@ import {
   decodeLook,
   MESSAGES,
   ROOM_NAME,
+  type ClaimTablePayload,
   type JoinOptions,
   type Look,
   type Position,
   type VoiceToken,
 } from "@void/shared";
+
+export interface TableClaimSnapshot {
+  tableId: string;
+  userId: string;
+  name: string;
+}
 
 export interface PlayerSnapshot extends Position {
   id: string;
@@ -27,6 +34,11 @@ export interface VoidConnection {
   sendMove(pos: Position): void;
   /** Rejects when the server has no LiveKit configured. */
   requestVoiceToken(): Promise<VoiceToken>;
+  /** Rejects with the server's reason (taken, too far, you already have one). */
+  claimTable(tableId: string): Promise<void>;
+  releaseTable(): Promise<void>;
+  /** Fires with every current claim whenever one is added, changed or removed. */
+  onClaims(cb: (claims: TableClaimSnapshot[]) => void): void;
   /** Tell the room our name or look changed so everyone sees the new one. */
   refreshProfile(): void;
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
@@ -73,6 +85,29 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     sessionId: room.sessionId,
     sendMove: (pos) => room.send(MESSAGES.MOVE, pos),
     requestVoiceToken: () => room.request(MESSAGES.VOICE_TOKEN),
+    claimTable: async (tableId) => {
+      await room.request(MESSAGES.CLAIM_TABLE, { tableId } satisfies ClaimTablePayload);
+    },
+    releaseTable: async () => {
+      await room.request(MESSAGES.UNCLAIM_TABLE);
+    },
+    onClaims: (cb) => {
+      const claims = new Map<string, TableClaimSnapshot>();
+      const emit = () => cb([...claims.values()]);
+      const tables = $(room.state as any).tables;
+      tables.onAdd((c: any, tableId: string) => {
+        const set = () => {
+          claims.set(tableId, { tableId, userId: c.userId, name: c.name });
+          emit();
+        };
+        set();
+        $(c).onChange(set);
+      });
+      tables.onRemove((_: any, tableId: string) => {
+        claims.delete(tableId);
+        emit();
+      });
+    },
     refreshProfile: () => room.send(MESSAGES.REFRESH_PROFILE),
     onPlayerAdd: (cb) => players.onAdd((p: any, id: string) => cb(snapshot(p, id))),
     onPlayerMove: (cb) =>

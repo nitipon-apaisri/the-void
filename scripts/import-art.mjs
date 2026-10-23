@@ -187,7 +187,11 @@ const vwall = (x, y0, y1) => {
 //   cafeteria   | event lounge| open office
 // Walls sit on x = 30 and 60 and on rows 22-23 and 44-45; the gaps in them are the doors.
 
+// Every desk is a claimable table (see TABLES_LAYER in @void/shared). The rectangle includes
+// the chair, so you claim it from where you sit.
+const tables = [];
 const stampDesk = (x, y) => {
+  tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
   stamp(objects, "generic", 0, 5, 4, 3, x, y);
   block(x + 1, y, 2, 3);
   stamp(objects, "generic", 2, 11, 1, 2, x + 1, y + 3);
@@ -329,8 +333,8 @@ const map = {
   type: "map",
   version: "1.10",
   tiledversion: "1.10.2",
-  nextlayerid: 6,
-  nextobjectid: 1,
+  nextlayerid: 7,
+  nextobjectid: tables.length + 1,
   width: COLS,
   height: ROWS,
   tilewidth: TILE,
@@ -341,6 +345,24 @@ const map = {
     layer(3, "objects", objects),
     layer(5, "above", above),
     { ...layer(4, "collision", collision), visible: false },
+    {
+      id: 6,
+      name: "tables",
+      type: "objectgroup",
+      draworder: "topdown",
+      opacity: 1,
+      visible: false,
+      x: 0,
+      y: 0,
+      objects: tables.map((t, i) => ({
+        id: i + 1,
+        name: `Desk ${i + 1}`,
+        type: "table",
+        rotation: 0,
+        visible: true,
+        ...t,
+      })),
+    },
   ],
   tilesets,
 };
