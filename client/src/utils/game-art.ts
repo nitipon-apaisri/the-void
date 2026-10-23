@@ -6,20 +6,9 @@ const tilesets = import.meta.glob("../assets/game/*.png", {
   import: "default",
 }) as Record<string, string>;
 
-const characters = import.meta.glob("../assets/game/characters/premade-*.png", {
-  eager: true,
-  query: "?url",
-  import: "default",
-}) as Record<string, string>;
-
 /** Tileset image URLs by tileset name (the file name without .png). */
 export const tilesetUrls: Record<string, string> = Object.fromEntries(
   Object.entries(tilesets).map(([file, url]) => [file.split("/").pop()!.replace(".png", ""), url]),
 );
 
-/** Character sheet URLs in avatar order (premade-01 is avatar 0). */
-export const characterUrls: string[] = Object.entries(characters)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, url]) => url);
-
-export const hasGameArt = characterUrls.length > 0 && Object.keys(tilesetUrls).length > 0;
+export const hasGameArt = Object.keys(tilesetUrls).length > 0;

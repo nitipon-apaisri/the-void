@@ -10,9 +10,53 @@ export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 export const SPAWN = { x: 10 * TILE_SIZE + TILE_SIZE / 2, y: 20 * TILE_SIZE + TILE_SIZE / 2 };
 
-// Avatar choices; players send an index 0..AVATAR_COUNT-1. The client maps it to a premade
-// character sheet (client/src/utils/characters.ts); 4c replaces this with layered parts.
-export const AVATAR_COUNT = 10;
+// A character is five layered parts from the LimeZu character generator, drawn in this order.
+// Each value is a position in the pack's sorted file list for that part, so the counts below
+// describe pack v41.4 (client/src/utils/look-art.ts reads the same lists). The accessory is
+// optional: -1 means none.
+export const LOOK_PARTS = ["body", "eyes", "outfit", "hair", "accessory"] as const;
+export type LookPart = (typeof LOOK_PARTS)[number];
+export type Look = Record<LookPart, number>;
+export const LOOK_COUNTS: Record<LookPart, number> = {
+  body: 9,
+  eyes: 7,
+  outfit: 132,
+  hair: 200,
+  accessory: 84,
+};
+export const NO_ACCESSORY = -1;
+export const DEFAULT_LOOK: Look = { body: 0, eyes: 0, outfit: 0, hair: 0, accessory: NO_ACCESSORY };
+
+const lookInRange = (part: LookPart, value: unknown): value is number =>
+  Number.isInteger(value) &&
+  (value as number) >= (part === "accessory" ? NO_ACCESSORY : 0) &&
+  (value as number) < LOOK_COUNTS[part];
+
+/** True for an object holding exactly an in-range index for every part. */
+export const isLook = (raw: unknown): raw is Look => {
+  if (typeof raw !== "object" || raw === null) return false;
+  const keys = Object.keys(raw);
+  return (
+    keys.length === LOOK_PARTS.length &&
+    LOOK_PARTS.every((part) => lookInRange(part, (raw as Record<string, unknown>)[part]))
+  );
+};
+
+/** "body.eyes.outfit.hair.accessory", e.g. "3.1.20.45.-1": the form kept in the database and room state. */
+export const encodeLook = (look: Look): string => LOOK_PARTS.map((part) => look[part]).join(".");
+
+/** Undefined when the text is not a valid look (so bad data never reaches the renderer). */
+export function decodeLook(text: string): Look | undefined {
+  const values = text.split(".");
+  if (values.length !== LOOK_PARTS.length) return undefined;
+  const look: Record<string, number> = {};
+  for (const [i, part] of LOOK_PARTS.entries()) {
+    const raw = values[i]!;
+    if (!/^-?\d{1,3}$/.test(raw)) return undefined;
+    look[part] = Number(raw);
+  }
+  return isLook(look) ? look : undefined;
+}
 
 // Players closer than this (in tiles) hear and see each other.
 export const PROXIMITY_TILES = 3;
@@ -22,7 +66,7 @@ export const MESSAGES = {
   MOVE: "move",
   // Request/response: the room answers with a VoiceToken.
   VOICE_TOKEN: "voice-token",
-  // After an account edit over HTTP: the room re-reads the name and avatar from the database.
+  // After an account edit over HTTP: the room re-reads the name and look from the database.
   REFRESH_PROFILE: "refresh-profile",
 } as const;
 
@@ -58,10 +102,10 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  avatar: number;
+  look: Look;
 }
 
-export type UpdateProfilePayload = Pick<RegisterPayload, "name" | "avatar">;
+export type UpdateProfilePayload = Pick<RegisterPayload, "name" | "look">;
 
 export interface ChangePasswordPayload {
   currentPassword: string;
@@ -84,7 +128,7 @@ export interface LoginPayload {
 
 export interface RegisterPayload extends LoginPayload {
   name: string;
-  avatar: number;
+  look: Look;
 }
 
 export interface AuthSession {

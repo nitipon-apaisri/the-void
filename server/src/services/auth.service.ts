@@ -39,7 +39,7 @@ export const toProfile = (user: UserRecord): UserProfile => ({
   id: user.id,
   email: user.email,
   name: user.name,
-  avatar: user.avatar,
+  look: user.look,
 });
 
 interface Deps {
@@ -68,12 +68,12 @@ export function createAuthService({ users, passwords, tokens }: Deps): AuthServi
   const gone = () => new AuthError(401, "not signed in");
 
   return {
-    async register({ email, password, name, avatar }) {
+    async register({ email, password, name, look }) {
       const user = await users.create({
         email,
         passwordHash: await passwords.hash(password),
         name,
-        avatar,
+        look,
       });
       if (!user) throw new AuthError(409, "an account with this email already exists");
       return session(user);
@@ -94,8 +94,8 @@ export function createAuthService({ users, passwords, tokens }: Deps): AuthServi
       return user && user.tokenVersion === claims.version ? user : undefined;
     },
 
-    async updateProfile(user, { name, avatar }) {
-      const updated = await users.updateProfile(user.id, name, avatar);
+    async updateProfile(user, { name, look }) {
+      const updated = await users.updateProfile(user.id, name, look);
       if (!updated) throw gone();
       return toProfile(updated);
     },

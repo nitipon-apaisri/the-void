@@ -1,3 +1,6 @@
+// shared
+import { DEFAULT_LOOK, decodeLook, encodeLook, type Look } from "@void/shared";
+
 export interface Queryable {
   query<R = Record<string, unknown>>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
 }
@@ -7,7 +10,7 @@ export interface UserRecord {
   email: string;
   passwordHash: string;
   name: string;
-  avatar: number;
+  look: Look;
   lastX: number | null;
   lastY: number | null;
   /** Tokens issued at an older version are no longer valid. */
@@ -19,20 +22,21 @@ interface UserRow {
   email: string;
   password_hash: string;
   display_name: string;
-  avatar: number;
+  look: string;
   last_x: number | null;
   last_y: number | null;
   token_version: number;
 }
 
-const COLUMNS = "id, email, password_hash, display_name, avatar, last_x, last_y, token_version";
+const COLUMNS = "id, email, password_hash, display_name, look, last_x, last_y, token_version";
 
 const toRecord = (row: UserRow): UserRecord => ({
   id: row.id,
   email: row.email,
   passwordHash: row.password_hash,
   name: row.display_name,
-  avatar: row.avatar,
+  // A row that fails to decode would only come from a manual edit; fall back rather than crash.
+  look: decodeLook(row.look) ?? DEFAULT_LOOK,
   lastX: row.last_x,
   lastY: row.last_y,
   tokenVersion: row.token_version,
@@ -44,7 +48,7 @@ export interface NewUser {
   email: string;
   passwordHash: string;
   name: string;
-  avatar: number;
+  look: Look;
 }
 
 export interface UserRepository {
@@ -53,7 +57,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | undefined>;
   findById(id: string): Promise<UserRecord | undefined>;
   savePosition(id: string, x: number, y: number): Promise<void>;
-  updateProfile(id: string, name: string, avatar: number): Promise<UserRecord | undefined>;
+  updateProfile(id: string, name: string, look: Look): Promise<UserRecord | undefined>;
   /** Undefined when the email belongs to another account. */
   updateEmail(id: string, email: string): Promise<UserRecord | undefined>;
   /** Also bumps the token version, which signs every other device out. */
@@ -67,11 +71,11 @@ export function createUserRepository(db: Queryable): UserRepository {
   return {
     async create(user) {
       const { rows } = await db.query<UserRow>(
-        `insert into t_users (email, password_hash, display_name, avatar)
+        `insert into t_users (email, password_hash, display_name, look)
          values ($1, $2, $3, $4)
          on conflict (email) where deleted_at is null do nothing
          returning ${COLUMNS}`,
-        [user.email, user.passwordHash, user.name, user.avatar],
+        [user.email, user.passwordHash, user.name, encodeLook(user.look)],
       );
       return rows[0] && toRecord(rows[0]);
     },
@@ -99,11 +103,11 @@ export function createUserRepository(db: Queryable): UserRepository {
       );
     },
 
-    async updateProfile(id, name, avatar) {
+    async updateProfile(id, name, look) {
       const { rows } = await db.query<UserRow>(
-        `update t_users set display_name = $2, avatar = $3, updated_at = now()
+        `update t_users set display_name = $2, look = $3, updated_at = now()
          where id = $1 and deleted_at is null returning ${COLUMNS}`,
-        [id, name, avatar],
+        [id, name, encodeLook(look)],
       );
       return rows[0] && toRecord(rows[0]);
     },

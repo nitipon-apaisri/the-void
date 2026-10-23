@@ -10,7 +10,15 @@
 // The map is written only when it is missing or you pass --map, so edits made in Tiled survive
 // a re-import. Tilesets keep their names (floors, walls, generic, conference).
 // Keep COLS/ROWS/TILE in sync with shared/src/index.ts.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 const TILE = 32;
@@ -37,9 +45,16 @@ const SHEETS = {
   generic: path.join(interiors, "Theme_Sorter_32x32/1_Generic_32x32.png"),
   conference: path.join(interiors, "Theme_Sorter_32x32/13_Conference_Hall_32x32.png"),
 };
-const CHARACTERS = path.join(pack, "2_Characters/Character_Generator/0_Premade_Characters/32x32");
-
-mkdirSync(path.join(outDir, "characters"), { recursive: true });
+// Layered character parts, in drawing order. Folder, file prefix, and the matching key in
+// LOOK_COUNTS (shared/src/index.ts).
+const GENERATOR = path.join(pack, "2_Characters/Character_Generator");
+const LOOK_FOLDERS = {
+  body: "Bodies",
+  eyes: "Eyes",
+  outfit: "Outfits",
+  hair: "Hairstyles",
+  accessory: "Accessories",
+};
 
 // PNG width and height live at fixed offsets in the IHDR chunk.
 const size = (file) => {
@@ -73,12 +88,43 @@ for (const [name, file] of Object.entries(SHEETS)) {
   nextGid += count;
 }
 
-for (let i = 1; i <= 10; i++) {
-  const n = String(i).padStart(2, "0");
-  copyFileSync(
-    path.join(CHARACTERS, `Premade_Character_32x32_${n}.png`),
-    path.join(outDir, `characters/premade-${n}.png`),
-  );
+// ---- character parts ----
+// A part's index is its place in the sorted file list, so the same pack always gives the same
+// numbers. The manifest tells the client how files group into styles and colours:
+// "Outfit_03_32x32_02.png" is style 3, colour 2; parts without a style number are style 1.
+const looksDir = path.join(outDir, "looks");
+rmSync(looksDir, { recursive: true, force: true });
+const manifest = {};
+for (const [part, folder] of Object.entries(LOOK_FOLDERS)) {
+  const dir = path.join(GENERATOR, folder, "32x32");
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".png"))
+    .sort((x, y) => x.localeCompare(y));
+  mkdirSync(path.join(looksDir, part), { recursive: true });
+  manifest[part] = files.map((file, i) => {
+    copyFileSync(
+      path.join(dir, file),
+      path.join(looksDir, part, `${String(i).padStart(3, "0")}.png`),
+    );
+    const match = /^[A-Za-z]+_(?:(\d+)_)?(?:([A-Za-z_]+?)_)?32x32_(\d+)\.png$/.exec(file);
+    return {
+      style: match?.[1] ? Number(match[1]) : 1,
+      name: (match?.[2] ?? "").replaceAll("_", " "),
+      variant: match ? Number(match[3]) : i + 1,
+    };
+  });
+}
+writeFileSync(path.join(looksDir, "manifest.json"), JSON.stringify(manifest));
+
+// The server validates against the counts in shared; flag a pack that disagrees with them.
+const shared = readFileSync(new URL("../shared/src/index.ts", import.meta.url), "utf8");
+for (const [part, list] of Object.entries(manifest)) {
+  const declared = Number(new RegExp(`\\b${part}: (\\d+),`).exec(shared)?.[1]);
+  if (declared !== list.length) {
+    console.warn(
+      `LOOK_COUNTS.${part} is ${declared} but the pack has ${list.length}; update shared/src/index.ts`,
+    );
+  }
 }
 
 // ---- map ----
@@ -219,6 +265,6 @@ const mapFile = new URL("maps/office.tmj", root);
 const mapWritten = writeMap || !existsSync(mapFile);
 if (mapWritten) writeFileSync(mapFile, JSON.stringify(map));
 console.log(
-  `copied ${Object.keys(SHEETS).length} sheets and 10 characters; ` +
+  `copied ${Object.keys(SHEETS).length} sheets and the character parts; ` +
     (mapWritten ? "wrote office.tmj" : "kept office.tmj (pass --map to regenerate it)"),
 );

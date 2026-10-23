@@ -32,7 +32,7 @@ export const defaultSettings = (proximityTiles: number): Settings => ({
   cameraDeviceId: "",
   speakerDeviceId: "",
   volume: 1,
-  keys: "both",
+  keys: "arrows",
   zoom: 1,
   maxFps: 60,
   showNames: true,

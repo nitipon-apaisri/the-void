@@ -1,6 +1,6 @@
 // shared
 import {
-  AVATAR_COUNT,
+  isLook,
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
@@ -53,11 +53,6 @@ const parseName = (raw: unknown): string | undefined => {
   return name && name.length <= MAX_NAME_LENGTH ? name : undefined;
 };
 
-const parseAvatar = (raw: unknown): number | undefined =>
-  Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) < AVATAR_COUNT
-    ? (raw as number)
-    : undefined;
-
 // A current password is only checked for presence and size here; the service verifies it.
 const parseCurrentPassword = (raw: unknown): string | undefined =>
   typeof raw === "string" && raw.length > 0 && raw.length <= MAX_PASSWORD_LENGTH ? raw : undefined;
@@ -80,9 +75,10 @@ export function parseProfile(body: unknown): Parsed<UpdateProfilePayload> {
   if (!isObject(body)) return fail("invalid request");
   const name = parseName(body.name);
   if (!name) return fail(`name must be 1 to ${MAX_NAME_LENGTH} characters`);
-  const avatar = parseAvatar(body.avatar);
-  if (avatar === undefined) return fail("pick a character");
-  return { ok: true, value: { name, avatar } };
+  if (!isLook(body.look)) return fail("pick a character");
+  // Copy the known fields so nothing else a client sent is stored or echoed back.
+  const { body: bodyPart, eyes, outfit, hair, accessory } = body.look;
+  return { ok: true, value: { name, look: { body: bodyPart, eyes, outfit, hair, accessory } } };
 }
 
 export function parsePasswordChange(body: unknown): Parsed<ChangePasswordPayload> {

@@ -2,7 +2,7 @@
 import { Room, ServerError, type Client } from "@colyseus/core";
 
 // shared
-import { MAX_CLIENTS, MESSAGES, type JoinOptions } from "@void/shared";
+import { encodeLook, MAX_CLIENTS, MESSAGES, type JoinOptions, type Look } from "@void/shared";
 
 import type { UserRepository } from "../../repositories/user.repository.js";
 import type { AuthService } from "../../services/auth.service.js";
@@ -23,7 +23,7 @@ const REFRESH_MS = 1000;
 interface Account {
   userId: string;
   name: string;
-  avatar: number;
+  look: Look;
   lastX: number | null;
   lastY: number | null;
 }
@@ -56,7 +56,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const user = await options.users.findById(account.userId);
       if (!user) return;
       player.name = user.name;
-      player.avatar = user.avatar;
+      player.look = encodeLook(user.look);
     });
     this.onMessage(MESSAGES.MOVE, (client, payload) => {
       const player = this.state.players.get(client.sessionId);
@@ -74,7 +74,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     return {
       userId: user.id,
       name: user.name,
-      avatar: user.avatar,
+      look: user.look,
       lastX: user.lastX,
       lastY: user.lastY,
     };
@@ -83,10 +83,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   onJoin(client: Client<{ auth: Account }>) {
     // onAuth always ran first; this only narrows the type.
     if (!client.auth) throw new ServerError(401, "not signed in");
-    const { name, avatar, lastX, lastY } = client.auth;
+    const { name, look, lastX, lastY } = client.auth;
     const player = new Player();
     player.name = name;
-    player.avatar = avatar;
+    player.look = encodeLook(look);
     const spawn = resolveSpawn(lastX, lastY);
     player.x = spawn.x;
     player.y = spawn.y;

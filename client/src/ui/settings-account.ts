@@ -3,6 +3,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
+  type Look,
   type UserProfile,
 } from "@void/shared";
 
@@ -10,11 +11,11 @@ import {
 import { AuthRequestError } from "../net/auth-client";
 
 // ui
-import { createAvatarPicker } from "./avatar-picker";
+import { createLookEditor } from "./look-editor";
 
 /** What the account tab can ask the app to do. Each call throws an Error with a displayable message. */
 export interface AccountActions {
-  updateProfile(name: string, avatar: number): Promise<UserProfile>;
+  updateProfile(name: string, look: Look): Promise<UserProfile>;
   changeEmail(email: string, currentPassword: string): Promise<UserProfile>;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
   signOutOthers(): Promise<void>;
@@ -67,7 +68,7 @@ export function buildAccountTab({ profile, actions }: AccountContext): HTMLEleme
       <label>Display name
         <input name="name" maxlength="${MAX_NAME_LENGTH}" autocomplete="nickname" />
       </label>
-      <div class="avatar-slot"></div>
+      <div class="look-slot"></div>
       <button class="primary" type="button">Save profile</button>
       <p class="status" role="status"></p>
     </section>
@@ -114,17 +115,17 @@ export function buildAccountTab({ profile, actions }: AccountContext): HTMLEleme
   const input = (sec: HTMLElement, name: string) =>
     sec.querySelector<HTMLInputElement>(`input[name=${name}]`)!;
   const button = (sec: HTMLElement) =>
-    sec.querySelector<HTMLButtonElement>("button:not(.void-avatar)")!;
+    sec.querySelector<HTMLButtonElement>("button:not(.void-look__btn)")!;
 
   // Profile
   const profileSec = section("profile");
   const name = input(profileSec, "name");
   name.value = current.name;
-  const avatarPicker = createAvatarPicker(current.avatar, "Character");
-  profileSec.querySelector(".avatar-slot")!.append(avatarPicker.element);
+  const lookEditor = createLookEditor(current.look);
+  profileSec.querySelector(".look-slot")!.append(lookEditor.element);
   button(profileSec).addEventListener("click", () =>
     run(profileSec, button(profileSec), async () => {
-      current = await actions.updateProfile(name.value, avatarPicker.value());
+      current = await actions.updateProfile(name.value, lookEditor.value());
       name.value = current.name;
     }),
   );

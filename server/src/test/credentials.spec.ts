@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AVATAR_COUNT,
+  LOOK_COUNTS,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -20,7 +20,7 @@ const valid = {
   email: "  Alice@Example.com ",
   password: "a".repeat(MIN_PASSWORD_LENGTH),
   name: "  Alice ",
-  avatar: 1,
+  look: { body: 1, eyes: 1, outfit: 1, hair: 1, accessory: -1 },
 };
 
 describe("normalizeEmail", () => {
@@ -40,7 +40,12 @@ describe("parseRegistration", () => {
   it("accepts a valid body and normalizes it", () => {
     expect(parseRegistration(valid)).toEqual({
       ok: true,
-      value: { email: "alice@example.com", password: valid.password, name: "Alice", avatar: 1 },
+      value: {
+        email: "alice@example.com",
+        password: valid.password,
+        name: "Alice",
+        look: valid.look,
+      },
     });
   });
 
@@ -67,8 +72,19 @@ describe("parseRegistration", () => {
     expect(parseRegistration({ ...valid, name: "a".repeat(MAX_NAME_LENGTH + 1) }).ok).toBe(false);
   });
 
-  it.each([-1, AVATAR_COUNT, 1.5, "1", null, undefined])("rejects avatar %j", (avatar) => {
-    expect(parseRegistration({ ...valid, avatar }).ok).toBe(false);
+  it.each([
+    [{ ...valid.look, body: -1 }],
+    [{ ...valid.look, body: LOOK_COUNTS.body }],
+    [{ ...valid.look, outfit: 1.5 }],
+    [{ ...valid.look, hair: "1" }],
+    [{ ...valid.look, accessory: -2 }],
+    [{ ...valid.look, accessory: LOOK_COUNTS.accessory }],
+    [{ ...valid.look, extra: 1 }],
+    [{ body: 0, eyes: 0, outfit: 0, hair: 0 }],
+    [null],
+    [undefined],
+  ])("rejects look %j", (look) => {
+    expect(parseRegistration({ ...valid, look }).ok).toBe(false);
   });
 });
 
@@ -87,14 +103,18 @@ describe("parseLogin", () => {
 });
 
 describe("account edit parsers", () => {
-  it("parseProfile trims the name and checks the avatar", () => {
-    expect(parseProfile({ name: " Al ", avatar: 0 })).toEqual({
+  it("parseProfile trims the name and checks the look", () => {
+    expect(parseProfile({ name: " Al ", look: valid.look })).toEqual({
       ok: true,
-      value: { name: "Al", avatar: 0 },
+      value: { name: "Al", look: valid.look },
     });
-    expect(parseProfile({ name: "", avatar: 0 }).ok).toBe(false);
-    expect(parseProfile({ name: "Al", avatar: AVATAR_COUNT }).ok).toBe(false);
-    expect(parseProfile({ name: "x".repeat(MAX_NAME_LENGTH + 1), avatar: 0 }).ok).toBe(false);
+    expect(parseProfile({ name: "", look: valid.look }).ok).toBe(false);
+    expect(parseProfile({ name: "Al", look: { ...valid.look, eyes: LOOK_COUNTS.eyes } }).ok).toBe(
+      false,
+    );
+    expect(parseProfile({ name: "x".repeat(MAX_NAME_LENGTH + 1), look: valid.look }).ok).toBe(
+      false,
+    );
   });
 
   it("parsePasswordChange applies the password policy to the new password only", () => {

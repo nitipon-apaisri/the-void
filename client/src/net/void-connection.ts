@@ -3,9 +3,12 @@ import { Client, getStateCallbacks } from "@colyseus/sdk";
 
 // shared
 import {
+  DEFAULT_LOOK,
+  decodeLook,
   MESSAGES,
   ROOM_NAME,
   type JoinOptions,
+  type Look,
   type Position,
   type VoiceToken,
 } from "@void/shared";
@@ -13,7 +16,7 @@ import {
 export interface PlayerSnapshot extends Position {
   id: string;
   name: string;
-  avatar: number;
+  look: Look;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -22,7 +25,7 @@ export interface VoidConnection {
   sendMove(pos: Position): void;
   /** Rejects when the server has no LiveKit configured. */
   requestVoiceToken(): Promise<VoiceToken>;
-  /** Tell the room our name or avatar changed so everyone sees the new one. */
+  /** Tell the room our name or look changed so everyone sees the new one. */
   refreshProfile(): void;
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
   onPlayerMove(cb: (player: PlayerSnapshot) => void): void;
@@ -50,7 +53,8 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
   const snapshot = (p: any, id: string): PlayerSnapshot => ({
     id,
     name: p.name,
-    avatar: p.avatar,
+    // The room only ever stores a validated look, so the fallback is for a bad edit by hand.
+    look: decodeLook(p.look) ?? DEFAULT_LOOK,
     x: p.x,
     y: p.y,
   });

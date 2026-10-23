@@ -4,10 +4,14 @@ import {
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   type AuthSession,
+  type Look,
 } from "@void/shared";
 
+// systems
+import { randomLook } from "../systems/look-groups";
+
 // ui
-import { createAvatarPicker } from "./avatar-picker";
+import { createLookEditor } from "./look-editor";
 import { applyTheme } from "./theme";
 
 // utils
@@ -19,7 +23,7 @@ export interface AuthFields {
   email: string;
   password: string;
   name: string;
-  avatar: number;
+  look: Look;
 }
 
 /** Performs the sign in or sign up; throws an Error whose message is safe to display. */
@@ -30,7 +34,7 @@ const STYLES = `
 .void-auth { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
   background: radial-gradient(900px 520px at 50% 0%, rgb(139 147 255 / 0.22), transparent 70%), var(--v-bg);
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
-.void-auth form { width: min(380px, calc(100vw - 32px)); padding: 28px; border-radius: 22px;
+.void-auth form { width: min(430px, calc(100vw - 32px)); padding: 28px; border-radius: 22px;
   background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
   -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur); display: grid; gap: 16px; }
 .void-auth h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
@@ -69,7 +73,7 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
       <label data-register hidden>Display name
         <input name="name" maxlength="${MAX_NAME_LENGTH}" autocomplete="nickname" />
       </label>
-      <div data-register hidden class="avatar-slot"></div>
+      <div data-register hidden class="look-slot"></div>
       <p class="error" role="alert"></p>
       <button class="submit" type="submit"></button>
       <button class="switch" type="button"></button>
@@ -86,8 +90,8 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
   const switchButton = q<HTMLButtonElement>(".switch");
   error.textContent = notice;
 
-  const avatarPicker = createAvatarPicker(0, "Character");
-  q(".avatar-slot").append(avatarPicker.element);
+  const lookEditor = createLookEditor(randomLook());
+  q(".look-slot").append(lookEditor.element);
 
   const render = () => {
     const registering = mode === "register";
@@ -123,7 +127,7 @@ export function promptAuth(submit: AuthSubmit, notice = ""): Promise<AuthSession
           email: email.value,
           password: password.value,
           name: name.value,
-          avatar: avatarPicker.value(),
+          look: lookEditor.value(),
         });
         overlay.remove();
         resolve(session);

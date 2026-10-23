@@ -34,8 +34,8 @@ function fakeUsers(): UserRepository {
       return byId.get(id);
     },
     async savePosition() {},
-    async updateProfile(id, name, avatar) {
-      return patch(id, { name, avatar });
+    async updateProfile(id, name, look) {
+      return patch(id, { name, look });
     },
     async updateEmail(id, email) {
       if ([...byId.values()].some((u) => u.email === email && u.id !== id)) return undefined;
@@ -60,7 +60,13 @@ const newAuth = () =>
     tokens: createTokenService("s".repeat(32)),
   });
 
-const alice = { email: "alice@example.com", password: "correct horse", name: "Alice", avatar: 2 };
+const aliceLook = { body: 2, eyes: 1, outfit: 30, hair: 40, accessory: -1 };
+const alice = {
+  email: "alice@example.com",
+  password: "correct horse",
+  name: "Alice",
+  look: aliceLook,
+};
 
 describe("auth service", () => {
   it("registers, then logs in with the same password", async () => {
@@ -70,7 +76,7 @@ describe("auth service", () => {
       id: registered.user.id,
       email: alice.email,
       name: "Alice",
-      avatar: 2,
+      look: aliceLook,
     });
 
     const session = await auth.login({ email: alice.email, password: alice.password });
@@ -115,11 +121,12 @@ describe("auth service", () => {
       return { auth, user, token };
     };
 
-    it("updates the name and avatar", async () => {
+    it("updates the name and look", async () => {
       const { auth, user } = await signedUp();
-      expect(await auth.updateProfile(user, { name: "Al", avatar: 4 })).toMatchObject({
+      const newLook = { body: 4, eyes: 3, outfit: 100, hair: 150, accessory: 12 };
+      expect(await auth.updateProfile(user, { name: "Al", look: newLook })).toMatchObject({
         name: "Al",
-        avatar: 4,
+        look: newLook,
       });
     });
 

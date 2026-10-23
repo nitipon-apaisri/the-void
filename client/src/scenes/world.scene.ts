@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 
 // shared
-import { AVATAR_COUNT, SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge } from "@void/shared";
+import { SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge, type Look } from "@void/shared";
 
 // config
 import {
@@ -23,7 +23,6 @@ import { connectVoice, listMediaDevices, type VoiceConnection } from "../net/voi
 import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
 
 // systems
-import { FRAME } from "../systems/character-frames";
 import { stepZoom } from "../systems/zoom";
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
 import { readDirection } from "../systems/controls";
@@ -32,7 +31,6 @@ import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
 
 // objects
-import { createCharacterAnimations } from "../objects/character-anims";
 import { PlayerSprite } from "../objects/player";
 
 // ui
@@ -46,7 +44,7 @@ import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
-import { characterUrls, tilesetUrls } from "../utils/game-art";
+import { tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
 
@@ -83,16 +81,9 @@ export class WorldScene extends Phaser.Scene {
   preload() {
     this.load.tilemapTiledJSON("office", mapUrl);
     for (const [name, url] of Object.entries(tilesetUrls)) this.load.image(name, url);
-    characterUrls.forEach((url, i) =>
-      this.load.spritesheet(`character-${i}`, url, {
-        frameWidth: FRAME.width,
-        frameHeight: FRAME.height,
-      }),
-    );
   }
 
   create() {
-    createCharacterAnimations(this, Math.min(AVATAR_COUNT, characterUrls.length));
     const map = this.make.tilemap({ key: "office" });
     const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
     for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
@@ -154,7 +145,7 @@ export class WorldScene extends Phaser.Scene {
       onSignOut: () => this.signOut(),
     });
 
-    this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.avatar);
+    this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.look);
     // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
     this.cameras.main.startFollow(this.me, true, 0.1, 0.1).setDeadzone(24, 16);
     void this.connect();
@@ -190,6 +181,9 @@ export class WorldScene extends Phaser.Scene {
   private setGameInput(on: boolean) {
     const keyboard = this.input.keyboard!;
     keyboard.enabled = on;
+    // A key released while input was off never reported its keyup, so it would read as held
+    // forever (up and down both "held" cancel out, and the character only moves sideways).
+    keyboard.resetKeys();
     if (on) keyboard.enableGlobalCapture();
     else keyboard.disableGlobalCapture();
   }
@@ -214,8 +208,8 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
-  private spawnPlayer(x: number, y: number, name: string, avatar: number) {
-    const player = new PlayerSprite(this, x, y, name, avatar);
+  private spawnPlayer(x: number, y: number, name: string, look: Look) {
+    const player = new PlayerSprite(this, x, y, name, look);
     player.setNameVisible(this.settings.showNames);
     return player;
   }
@@ -251,19 +245,19 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  // Edits go over HTTP; the room is then told to copy the stored name and avatar into its state.
+  // Edits go over HTTP; the room is then told to copy the stored name and look into its state.
   private accountActions() {
     const token = () => this.session!.token;
     const adopt = (user: AuthSession["user"]) => {
       this.session = this.remember({ token: token(), user });
-      this.me?.setProfile(user.name, user.avatar);
+      this.me?.setProfile(user.name, user.look);
       this.accountBar?.setName(user.name);
       this.connection?.refreshProfile();
       return user;
     };
     return {
-      updateProfile: async (name: string, avatar: number) =>
-        adopt(await this.auth.updateProfile(token(), { name, avatar })),
+      updateProfile: async (name: string, look: Look) =>
+        adopt(await this.auth.updateProfile(token(), { name, look })),
       changeEmail: async (email: string, currentPassword: string) =>
         adopt(await this.auth.changeEmail(token(), { email, currentPassword })),
       changePassword: async (currentPassword: string, newPassword: string) => {
@@ -301,12 +295,12 @@ export class WorldScene extends Phaser.Scene {
 
       connection.onPlayerAdd((p) => {
         if (p.id === connection.sessionId) return;
-        this.others.set(p.id, this.spawnPlayer(p.x, p.y, p.name, p.avatar));
+        this.others.set(p.id, this.spawnPlayer(p.x, p.y, p.name, p.look));
       });
       connection.onPlayerMove((p) => {
         const sprite = this.others.get(p.id);
         if (!sprite) return;
-        sprite.setProfile(p.name, p.avatar);
+        sprite.setProfile(p.name, p.look);
         const dx = p.x - sprite.x;
         const dy = p.y - sprite.y;
         // The same message also carries name changes; only a real move counts as a step.

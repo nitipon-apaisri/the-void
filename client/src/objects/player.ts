@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 
 // shared
-import { AVATAR_COUNT } from "@void/shared";
+import { encodeLook, type Look } from "@void/shared";
 
 // config
 import { PLAYER_RADIUS } from "../config/env";
@@ -11,45 +11,58 @@ import { PLAYER_RADIUS } from "../config/env";
 import { FRAME, facingFor, type Facing } from "../systems/character-frames";
 
 // objects
-import { animationKey, characterTexture } from "./character-anims";
+import { animationKey, ensureLookTexture } from "./look-textures";
 
 // How long after the last step a character counts as standing still.
 const IDLE_AFTER_MS = 150;
 // The character stands in the lower part of its frame; this lifts the name above the head.
 const NAME_OFFSET = -(FRAME.height * 0.7) + PLAYER_RADIUS;
 
-const safeAvatar = (avatar: number) => (avatar >= 0 && avatar < AVATAR_COUNT ? avatar : 0);
-
 /** A player: an animated character with the name above. (x, y) is where the feet are. */
 export class PlayerSprite extends Phaser.GameObjects.Container {
   private readonly sprite: Phaser.GameObjects.Sprite;
   private readonly label: Phaser.GameObjects.Text;
-  private avatar = -1;
+  private lookCode = "";
+  private textureKey = "";
+  private loadId = 0;
   private facing: Facing = "down";
   private moving = false;
   private lastStep = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, name: string, avatar: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, name: string, look: Look) {
     super(scene, x, y);
     // The origin is the bottom so the feet line up with the collision circle's lower edge.
-    this.sprite = scene.add.sprite(0, PLAYER_RADIUS, characterTexture(0)).setOrigin(0.5, 1);
+    // Hidden until the layers for this look have been drawn.
+    this.sprite = scene.add
+      .sprite(0, PLAYER_RADIUS, "__DEFAULT")
+      .setOrigin(0.5, 1)
+      .setVisible(false);
     this.label = scene.add
       .text(0, NAME_OFFSET, "", { color: "#e5e7eb", fontSize: "12px" })
       .setOrigin(0.5, 1);
-    this.setProfile(name, avatar);
+    this.setProfile(name, look);
     this.add([this.sprite, this.label]);
     this.setDepth(10);
     scene.add.existing(this);
   }
 
   /** Cheap to call on every state change: only touches what differs. */
-  setProfile(name: string, avatar: number) {
+  setProfile(name: string, look: Look) {
     if (this.label.text !== name) this.label.setText(name);
-    const next = safeAvatar(avatar);
-    if (next === this.avatar) return;
-    this.avatar = next;
-    this.sprite.setTexture(characterTexture(next));
-    this.play();
+    const code = encodeLook(look);
+    if (code === this.lookCode) return;
+    this.lookCode = code;
+    // A later change can overtake an earlier one that is still loading; only the newest wins.
+    const id = ++this.loadId;
+    ensureLookTexture(this.scene, look).then(
+      (key) => {
+        if (id !== this.loadId || !this.active) return;
+        this.textureKey = key;
+        this.sprite.setTexture(key).setVisible(true);
+        this.play();
+      },
+      (err) => console.warn("character art failed to load", err),
+    );
   }
 
   setNameVisible(visible: boolean) {
@@ -75,6 +88,10 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   }
 
   private play() {
-    this.sprite.play(animationKey(this.avatar, this.moving ? "walk" : "idle", this.facing), true);
+    if (!this.textureKey) return;
+    this.sprite.play(
+      animationKey(this.textureKey, this.moving ? "walk" : "idle", this.facing),
+      true,
+    );
   }
 }
