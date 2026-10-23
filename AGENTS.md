@@ -65,7 +65,7 @@ server/src/
 ├── index.ts           # bootstrap only
 ├── config/            # env parsing
 ├── rooms/[room]/      # [room].room.ts, [room].state.ts (schema), handlers/, test/
-├── routes/            # Express HTTP endpoints (auth); thin, call services
+├── routes/            # Express HTTP endpoints (auth, spaces); thin, call services
 ├── services/          # livekit tokens, auth, persistence
 ├── repositories/      # Postgres queries (when added)
 ├── common/            # validation, logging helpers
@@ -86,6 +86,7 @@ shared/src/            # message names, payload types, constants (imported as @v
 - **Scenes** stay thin: create objects, call systems, forward input. Rules live in `systems/`.
 - **Systems** are pure functions or small classes with no Phaser or network imports. This is what we unit-test.
 - **`net/`** is the only place that imports `@colyseus/sdk` or LiveKit. Scenes call it through a small interface.
+- **Spaces**: a room exists per space (`spaceId` join option); `t_space_members` says who belongs and with which role. Check membership on the server for every join and every space endpoint.
 - **Rooms** own authoritative state and message handlers; **services** own side effects; **repositories** own DB queries.
 - **Electron**: the renderer never gets Node access. Anything it needs goes through `preload.ts` with a typed, minimal API.
 - **Shared contract**: message names and payload types are defined once in `shared/` and imported by both sides. Never duplicate string literals like `"move"`.
@@ -134,7 +135,7 @@ Shared types → server room handler/state → server tests → client system (p
 - LiveKit API key/secret live on the server only. The client receives short-lived, room-scoped tokens.
 - Do not log tokens or full authorization headers.
 - Electron: `contextIsolation` on, `nodeIntegration` off, `sandbox` on. Restrict permission handlers to what is needed (media). Never load remote content in a window with a preload API.
-- Authorize on the server (room join, private-room access), never only in the client.
+- Authorize on the server (room join, space membership and role), never only in the client.
 
 ## Art
 

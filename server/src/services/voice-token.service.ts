@@ -4,6 +4,9 @@ import { AccessToken, TrackSource } from "livekit-server-sdk";
 // shared
 import { ROOM_NAME, type VoiceToken } from "@void/shared";
 
+/** One LiveKit room per space, so voice and video never cross from one space into another. */
+export const voiceRoomName = (spaceId: string) => `${ROOM_NAME}-${spaceId}`;
+
 export interface VoiceTokenConfig {
   url: string;
   apiKey: string;
@@ -11,7 +14,7 @@ export interface VoiceTokenConfig {
 }
 
 export interface VoiceTokenService {
-  issue(identity: string, name: string): Promise<VoiceToken>;
+  issue(spaceId: string, identity: string, name: string): Promise<VoiceToken>;
 }
 
 // Short TTL: the client asks again on reconnect, so a leaked token expires quickly.
@@ -22,7 +25,7 @@ export function createVoiceTokenService(config: VoiceTokenConfig): VoiceTokenSer
   if (!config.url || !config.apiKey || !config.apiSecret) return undefined;
 
   return {
-    async issue(identity, name) {
+    async issue(spaceId, identity, name) {
       const token = new AccessToken(config.apiKey, config.apiSecret, {
         identity,
         name,
@@ -30,7 +33,7 @@ export function createVoiceTokenService(config: VoiceTokenConfig): VoiceTokenSer
       });
       // Scoped to the one room; players publish their own tracks but cannot administer it.
       token.addGrant({
-        room: ROOM_NAME,
+        room: voiceRoomName(spaceId),
         roomJoin: true,
         canPublish: true,
         canSubscribe: true,

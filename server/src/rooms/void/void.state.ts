@@ -1,6 +1,8 @@
 import { Schema, MapSchema, type } from "@colyseus/schema";
 
 export class Player extends Schema {
+  // Lets the client match a player to the member list (online or not).
+  @type("string") userId = "";
   @type("string") name = "";
   @type("string") look = "";
   @type("number") x = 0;

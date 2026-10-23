@@ -9,6 +9,8 @@ import {
   type DesktopBridge,
   type Look,
   type Position,
+  type SpaceMember,
+  type SpaceSummary,
 } from "@void/shared";
 
 // config
@@ -25,9 +27,15 @@ import {
 } from "../config/env";
 
 // net
-import { createAuthClient } from "../net/auth-client";
+import { AuthRequestError, createAuthClient } from "../net/auth-client";
+import { createSpaceClient } from "../net/space-client";
 import { connectVoice, listMediaDevices, type VoiceConnection } from "../net/voice-connection";
-import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
+import {
+  NotInSpaceError,
+  NotSignedInError,
+  connectToVoid,
+  type VoidConnection,
+} from "../net/void-connection";
 
 // systems
 import { effectiveZoom, stepZoom } from "../systems/zoom";
@@ -44,7 +52,9 @@ import { PlayerSprite } from "../objects/player";
 // ui
 import { createAccountBar, type AccountBar } from "../ui/account-bar";
 import { promptAuth } from "../ui/auth-form";
+import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
+import { chooseSpace } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
 import { createToast, type Toast } from "../ui/toast";
 import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
@@ -55,6 +65,7 @@ import { desktopBridge } from "../utils/desktop-bridge";
 import { tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
+import { forgetLastSpace, loadLastSpace, saveLastSpace } from "../utils/space-store";
 
 import mapUrl from "../assets/maps/office.tmj?url";
 
@@ -69,7 +80,13 @@ export class WorldScene extends Phaser.Scene {
   private lastProximity = 0;
   private grid!: CollisionGrid;
   private readonly auth = createAuthClient(API_URL);
+  private readonly spaces = createSpaceClient(API_URL);
   private session?: AuthSession;
+  private space?: SpaceSummary;
+  private people?: PeoplePanel;
+  private members: SpaceMember[] = [];
+  // Account behind each session in the room, to tell who from the member list is online.
+  private readonly accounts = new Map<string, string>();
   private accountBar?: AccountBar;
   private me?: PlayerSprite;
   private others = new Map<string, PlayerSprite>();
@@ -142,6 +159,7 @@ export class WorldScene extends Phaser.Scene {
       this.toast.destroy();
       this.voicePanel.destroy();
       this.accountBar?.destroy();
+      this.people?.destroy();
     });
     void this.enter();
   }
@@ -152,10 +170,21 @@ export class WorldScene extends Phaser.Scene {
     const session = await this.signIn();
     this.session = session;
     this.setGameInput(true);
+    const space = await this.pickSpace(session);
+    this.space = space;
+    this.people = createPeoplePanel({
+      onGoTo: (userId) => this.goToUser(userId),
+      onTyping: (on) => this.setGameInput(!on),
+      onToggle: (open) => this.accountBar?.setPeopleOpen(open),
+    });
     this.accountBar = createAccountBar(session.user.name, {
+      onPeople: () => this.people?.toggle(),
+      onSwitchSpace: () => this.switchSpace(),
       onSettings: () => this.showSettings(),
       onSignOut: () => this.signOut(),
     });
+    this.people.setOnline(new Set([session.user.id]));
+    void this.loadMembers();
 
     this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.look);
     // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
@@ -181,6 +210,70 @@ export class WorldScene extends Phaser.Scene {
         mode === "register" ? await this.auth.register(fields) : await this.auth.login(fields),
       ),
     );
+  }
+
+  // The space you used last opens straight away; "Switch space" clears that to show the list.
+  private async pickSpace(session: AuthSession): Promise<SpaceSummary> {
+    const token = () => session.token;
+    const load = async () => {
+      try {
+        return await this.spaces.list(token());
+      } catch (err) {
+        if (err instanceof AuthRequestError && err.status === 401) this.signOut();
+        throw err;
+      }
+    };
+    const lastId = loadLastSpace(session.user.id);
+    if (lastId) {
+      try {
+        const last = (await load()).find((s) => s.id === lastId);
+        if (last) return last;
+      } catch {
+        // Fall through to the picker, which shows the error and lets people retry.
+      }
+    }
+    this.setGameInput(false);
+    const space = await chooseSpace({
+      load,
+      create: (name) => this.spaces.create(token(), { name }),
+    });
+    this.setGameInput(true);
+    saveLastSpace(session.user.id, space.id);
+    return space;
+  }
+
+  private switchSpace() {
+    forgetLastSpace();
+    window.location.reload();
+  }
+
+  private async loadMembers() {
+    const { session, space } = this;
+    if (!session || !space) return;
+    try {
+      this.members = await this.spaces.members(session.token, space.id);
+      this.people?.setMembers(this.members);
+    } catch (err) {
+      console.warn("could not load members", err);
+    }
+  }
+
+  private refreshOnline() {
+    if (!this.session) return;
+    this.people?.setOnline(new Set([this.session.user.id, ...this.accounts.values()]));
+  }
+
+  // Walks toward a person who is online, the way a click on the floor would.
+  private goToUser(userId: string) {
+    const me = this.me;
+    if (!me) return;
+    for (const [sessionId, id] of this.accounts) {
+      const sprite = id === userId ? this.others.get(sessionId) : undefined;
+      if (!sprite) continue;
+      const route = findPath(this.grid, me, sprite, PLAYER_RADIUS);
+      if (route.length > 0) this.route = route;
+      return;
+    }
   }
 
   private remember(session: AuthSession): AuthSession {
@@ -298,10 +391,13 @@ export class WorldScene extends Phaser.Scene {
 
   // Movement works offline; the connection only adds other players and sync.
   private async connect() {
-    if (this.connecting || !this.session) return;
+    if (this.connecting || !this.session || !this.space) return;
     this.connecting = true;
     try {
-      const connection = await connectToVoid(SERVER_URL, { token: this.session.token });
+      const connection = await connectToVoid(SERVER_URL, {
+        token: this.session.token,
+        spaceId: this.space.id,
+      });
       this.connection = connection;
       this.unsent = true;
       if (this.wasOffline) this.toast.show("Back online", "success", 2500);
@@ -309,8 +405,23 @@ export class WorldScene extends Phaser.Scene {
       this.wasOffline = false;
 
       connection.onPlayerAdd((p) => {
-        if (p.id === connection.sessionId) return;
+        if (p.id === connection.sessionId) {
+          // The server knows where we last stood in this space; start there.
+          this.me?.setPosition(p.x, p.y);
+          this.route = [];
+          return;
+        }
         this.others.set(p.id, this.spawnPlayer(p.x, p.y, p.name, p.look));
+        this.accounts.set(p.id, p.userId);
+        this.refreshOnline();
+        // Someone who joined the space after we loaded the list.
+        if (!this.members.some((m) => m.userId === p.userId)) void this.loadMembers();
+      });
+      // A move the server refused (a wall, or faster than anyone walks): go back to where it has us.
+      connection.onSnap((pos) => {
+        this.me?.setPosition(pos.x, pos.y);
+        this.route = [];
+        this.unsent = false;
       });
       connection.onPlayerMove((p) => {
         const sprite = this.others.get(p.id);
@@ -340,6 +451,11 @@ export class WorldScene extends Phaser.Scene {
         this.time.delayedCall(CONNECT_RETRY_MS, () => void this.connect());
       });
     } catch (err) {
+      if (err instanceof NotInSpaceError) {
+        // Removed from the space, or it is gone: pick again rather than retrying.
+        this.switchSpace();
+        return;
+      }
       if (err instanceof NotSignedInError) {
         // Expired or revoked: sign in again rather than retrying with the same token.
         this.signOut();
@@ -408,6 +524,8 @@ export class WorldScene extends Phaser.Scene {
   private removeOther(id: string) {
     this.others.get(id)?.destroy();
     this.others.delete(id);
+    this.accounts.delete(id);
+    this.refreshOnline();
   }
 
   // A click on the world: walk there, round walls. Overlays sit above the canvas and take their

@@ -18,13 +18,24 @@ describe("createVoiceTokenService", () => {
     expect(createVoiceTokenService({ ...config, apiSecret: "" })).toBeUndefined();
   });
 
+  it("gives each space its own room", async () => {
+    const service = createVoiceTokenService(config)!;
+    const a = claimsOf((await service.issue("space-a", "s", "Ada")).token);
+    const b = claimsOf((await service.issue("space-b", "s", "Ada")).token);
+    expect(a.video.room).not.toBe(b.video.room);
+  });
+
   it("issues a token for the given identity, scoped to one room", async () => {
-    const { url, token } = await createVoiceTokenService(config)!.issue("session-1", "Ada");
+    const { url, token } = await createVoiceTokenService(config)!.issue(
+      "space-1",
+      "session-1",
+      "Ada",
+    );
     const claims = claimsOf(token);
     expect(url).toBe(config.url);
     expect(claims.sub).toBe("session-1");
     expect(claims.name).toBe("Ada");
-    expect(claims.video).toMatchObject({ room: "void", roomJoin: true, canPublish: true });
+    expect(claims.video).toMatchObject({ room: "void-space-1", roomJoin: true, canPublish: true });
     expect(claims.video.roomAdmin).toBeUndefined();
     expect(claims.video.canPublishData).toBe(false);
     expect(claims.video.canPublishSources).toHaveLength(3);

@@ -7,6 +7,8 @@ import { injectStyle } from "../utils/dom";
 
 export interface AccountBar {
   setName(name: string): void;
+  /** Lights the People button while its panel is open. */
+  setPeopleOpen(open: boolean): void;
   destroy(): void;
 }
 
@@ -20,12 +22,18 @@ const STYLES = `
   border-radius: 50%; border: 0; background: transparent; color: var(--v-muted); cursor: pointer;
   transition: background 0.15s, color 0.15s; }
 .void-account button:hover { background: var(--v-hover); color: var(--v-text); }
+.void-account button[aria-pressed="true"] { background: rgb(139 147 255 / 0.22); color: var(--v-text); }
 .void-account button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 1px; }
 `;
 
 export function createAccountBar(
   name: string,
-  actions: { onSettings: () => void; onSignOut: () => void },
+  actions: {
+    onPeople: () => void;
+    onSwitchSpace: () => void;
+    onSettings: () => void;
+    onSignOut: () => void;
+  },
 ): AccountBar {
   applyTheme();
   injectStyle(STYLE_ID, STYLES);
@@ -43,14 +51,19 @@ export function createAccountBar(
     button.addEventListener("click", onClick);
     return button;
   };
+  const people = makeButton("People", ICONS.people, actions.onPeople);
+  people.setAttribute("aria-pressed", "false");
   root.append(
     label,
+    people,
+    makeButton("Switch space", ICONS.spaces, actions.onSwitchSpace),
     makeButton("Settings", ICONS.settings, actions.onSettings),
     makeButton("Sign out", ICONS.signOut, actions.onSignOut),
   );
   document.body.append(root);
   return {
     setName: (next) => (label.textContent = next),
+    setPeopleOpen: (open) => people.setAttribute("aria-pressed", String(open)),
     destroy: () => root.remove(),
   };
 }

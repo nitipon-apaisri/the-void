@@ -5,6 +5,7 @@ import { rateLimit } from "express-rate-limit";
 // shared
 import { AUTH_ROUTES, type ApiError } from "@void/shared";
 
+import { allowOrigins } from "../common/cors.js";
 import {
   parseDeletion,
   parseEmailChange,
@@ -34,21 +35,7 @@ const bearer = (req: Request) => req.header("authorization")?.match(/^Bearer (.+
 export function mountAuthRoutes(app: Application, { auth, corsOrigins, trustProxyHops }: Options) {
   app.set("trust proxy", trustProxyHops);
 
-  // Tokens travel in the Authorization header, not cookies, so CORS is the only browser gate.
-  app.use("/auth", (req, res, next) => {
-    const origin = req.header("origin");
-    if (origin && corsOrigins.includes(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-    }
-    if (req.method === "OPTIONS") {
-      res.sendStatus(204);
-      return;
-    }
-    next();
-  });
+  app.use("/auth", allowOrigins(corsOrigins));
 
   const limiter = rateLimit({
     windowMs: WINDOW_MS,

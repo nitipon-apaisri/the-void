@@ -4,9 +4,11 @@ import {
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
+  MAX_SPACE_NAME_LENGTH,
   MIN_PASSWORD_LENGTH,
   type ChangeEmailPayload,
   type ChangePasswordPayload,
+  type CreateSpacePayload,
   type DeleteAccountPayload,
   type LoginPayload,
   type RegisterPayload,
@@ -104,4 +106,13 @@ export function parseDeletion(body: unknown): Parsed<DeleteAccountPayload> {
   const password = parseCurrentPassword(body.password);
   if (!password) return fail("enter your password");
   return { ok: true, value: { password } };
+}
+
+export function parseSpace(body: unknown): Parsed<CreateSpacePayload> {
+  if (!isObject(body)) return fail("invalid request");
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name || name.length > MAX_SPACE_NAME_LENGTH) {
+    return fail(`name must be 1 to ${MAX_SPACE_NAME_LENGTH} characters`);
+  }
+  return { ok: true, value: { name } };
 }

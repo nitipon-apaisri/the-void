@@ -4,15 +4,15 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 
 ## Architecture
 
-| Layer          | Choice                   | Notes                                                |
-| -------------- | ------------------------ | ---------------------------------------------------- |
-| Client         | TypeScript, Vite, Phaser | Tiled (`.tmj`) maps                                  |
-| Realtime state | Colyseus 0.18            | One main room (max 100) plus rooms for private areas |
-| Voice / video  | LiveKit                  | Self-hosted SFU (`docker compose up`)                |
-| Auth           | Email and password       | Own server: scrypt hashes, signed 7-day tokens       |
-| DB             | Postgres                 | Users, spaces, permissions                           |
-| Desktop        | Electron                 | Chosen over Tauri for consistent WebRTC and WebGL    |
-| Deploy         | Docker Compose on a VPS  | Colyseus, LiveKit (if self-hosted), Postgres, proxy  |
+| Layer          | Choice                   | Notes                                               |
+| -------------- | ------------------------ | --------------------------------------------------- |
+| Client         | TypeScript, Vite, Phaser | Tiled (`.tmj`) maps                                 |
+| Realtime state | Colyseus 0.18            | One room per space (max 100 players each)           |
+| Voice / video  | LiveKit                  | Self-hosted SFU (`docker compose up`)               |
+| Auth           | Email and password       | Own server: scrypt hashes, signed 7-day tokens      |
+| DB             | Postgres                 | Users, spaces, permissions                          |
+| Desktop        | Electron                 | Chosen over Tauri for consistent WebRTC and WebGL   |
+| Deploy         | Docker Compose on a VPS  | Colyseus, LiveKit (if self-hosted), Postgres, proxy |
 
 ## Design rules for 100 users
 
@@ -35,15 +35,21 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 ## Roadmap
 
 0. **Foundations** (done): layout from `AGENTS.md`, `@void/shared` contract, Oxlint, Prettier, Vitest, `typecheck`, Husky, `.env.example`.
-1. **World** (done, placeholder art): Tiled map (`office.tmj`) with client-side wall/desk collision, camera follow, join form (name and colour), name labels. Placeholder art was replaced in 4b. Known gap: the server validates world bounds but not walls, so collision is client-trusted until the server loads the same map.
+1. **World** (done): Tiled map (`office.tmj`) with wall and desk collision, camera follow, join form, name labels. Placeholder art was replaced in 4b. The server enforces the same collision layer since 4d.
 2. **Proximity A/V** (built, self-hosted LiveKit): the room answers a `voice-token` request with a short-lived, room-scoped token; the client subscribes only to players within 3 tiles (with hysteresis, set by `PROXIMITY_TILES`) and has mic and camera toggles. Local dev: `docker compose up -d`, copy `.env.example` to `.env`. Not yet verified with two live browsers, and production needs a real key, `use_external_ip` and TLS (`wss://`).
 3. **Accounts** (built and verified in a browser): `/auth/register`, `/auth/login`, `/auth/me` on the game server; scrypt password hashes in Postgres (`t_users`); the room authenticates every join from a signed token and restores name, avatar and last position. Local dev: `docker compose up -d`, `npm run migrate -w server`. Still to do: password reset and email verification (needs a mail provider), profile editing, token revocation. Production: set a strong `AUTH_SECRET`, `CORS_ORIGINS` for the packaged client, `TRUST_PROXY_HOPS`, and TLS.
 4. **Space features** (in this order; screen share is done, the rest is planned):
    - **4a. Settings** (built and verified by hand): one settings window with two tabs. _System_: proximity range, mic, camera and speaker choice, volume, key bindings, quality; kept per device in `localStorage`, and in the desktop app through the preload bridge if it needs OS access. _Account_: display name, change password, change email, sign out everywhere (needs token revocation), delete account. Built: proximity range, mic, camera and speaker, volume and movement keys (arrows, WASD or both) in System; name and colour, email and password change (both ask for the current password), sign out other devices, and delete account in Account. Tokens carry a version (`t_users.token_version`) so a password change or "sign out other devices" ends every other login. Still open: other devices stay connected to the room until they next reconnect, a graphics-quality setting waits for 4b, and password reset needs a mail provider.
    - **4b. Better graphic** (built and verified by hand): LimeZu Modern Interiors (paid, licensed, not committed; see AGENTS.md, Art). `npm run assets:import` copies the sheets we use; the map is redrawn with real floors, walls, workstations, a lounge and a meeting room; the 10 premade characters walk and idle in four directions (avatar 0 to 9). Collision comes from a hidden `collision` layer, so what you see and what blocks you can differ. Also built, not yet tried by hand: an `above` map layer so the tops of tall furniture draw over players who walk behind it, a gentler camera follow with a small dead zone, and graphics settings (zoom, frame rate cap, show names). Still open: a lighting pass. 4c builds on this sprite format.
    - **4c. Character customize** (built, not yet tried by hand): a character is five layered parts from the LimeZu generator (skin, eyes, outfit, hair, optional extra), each a style and a colour. Stored as `t_users.look` (`"body.eyes.outfit.hair.accessory"`), validated on the server against `LOOK_COUNTS` in `@void/shared`, and sent to everyone through room state. The client draws the layers into one texture per look the first time it is seen and caches the layer images; a preview with style and colour steppers and Shuffle sits in the sign-up form and in Settings, Account. The old premade `avatar` column is kept, unused. Still open: textures are never freed, and the layer lists follow pack v41.4 (the import warns if the counts differ).
-   - **4d. Private rooms**: the server loads the same Tiled map and enforces wall collision first, then door tiles and a per-room access list; voice and screen share only cross a room boundary through a door. Authorize on the server, not just the client.
-   - **4e. Chat and emotes** (kept, not yet scheduled): live chat first, persistence undecided.
+   - **4d. Spaces** (replaces the single hardcoded room and the earlier private-rooms idea, which is dropped for now): every feature below belongs to a space, so this comes first. Order of work:
+     - **P0 Spaces, members, roles, user list** (built, not yet tried by hand): `t_spaces` and `t_space_members` (roles owner, admin, member; the last position is kept per space). One Colyseus room per space (`filterBy(["spaceId"])`) and one LiveKit room per space. The server checks membership on join, loads the map's `collision` layer and refuses moves into walls or faster than walking speed (it sends `snap` to put the client back). The client shows a space picker after sign-in (the last space opens by itself), a Switch space button, and a People panel with online and offline members, search, and click to walk to someone. Accounts that existed before get one space, "The Void". New spaces use the office template. Still open: roles are stored but nothing changes by role yet, an owner who deletes their account leaves the space without an owner, and members are only added by the database until invites exist.
+     - **P1 Invite by link**: a token link; the owner or admin picks "anyone with the link joins" or "needs approval"; pending requests show in the People panel; link expiry; `thevoid://join/...` deep link with desktop polish.
+     - **P1 Bigger map, mini map, floating buttons**: about 5 times the area (roughly 90 x 67 tiles), a mini map, and bottom-right buttons (zoom, show me, fit to window, mute). A map this size needs interest management (each client only gets nearby players) before 100 users.
+     - **P2 Claim a table**: tables become named map objects; one per user, claim and unclaim, enforced on the server; the owner's name shows on the table.
+     - **P2 Waving**: a message to a nearby player, a wave animation, a toast for the target.
+     - **P3 Decoration (furniture)**: a catalogue, edit mode with grid placement, permission by role, saved per space, server-side collision.
+     - **Nice to have**: text chat (was 4e), status and do-not-disturb, follow a person, desktop notifications for waves and invites, kick and ban, a broadcast or stage zone for all-hands talks.
    - Screen share, browser part (built and verified with two browsers): a Share screen toggle; viewers receive only the nearest sharer (`MAX_SCREEN_SHARES`); tokens may publish only mic, camera and screen. Desktop part (built and verified on macOS): the renderer shows its own picker (`ui/screen-picker.ts`), the main process lists sources over IPC and answers `getDisplayMedia` with the one that was picked. macOS needs Screen Recording permission, and packaging (step 7) needs the usage strings in `Info.plist`. Windows is untested.
 5. **Admin**: roles, map editing workflow, room permissions.
 6. **Desktop polish**: preload script, tray, notifications, global push-to-talk, deep links (`thevoid://join/...`), screen-source picker.

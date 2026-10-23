@@ -15,6 +15,8 @@ import {
 
 export interface PlayerSnapshot extends Position {
   id: string;
+  /** The account behind the session, to match the member list. */
+  userId: string;
   name: string;
   look: Look;
 }
@@ -30,6 +32,8 @@ export interface VoidConnection {
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
   onPlayerMove(cb: (player: PlayerSnapshot) => void): void;
   onPlayerRemove(cb: (id: string) => void): void;
+  /** The server refused a move and says where we are. */
+  onSnap(cb: (pos: Position) => void): void;
   /** Connection lost; the SDK is trying to reconnect on its own. */
   onDrop(cb: () => void): void;
   /** The SDK's automatic reconnect succeeded. */
@@ -39,12 +43,17 @@ export interface VoidConnection {
   leave(): Promise<void>;
 }
 
+/** Thrown by connectToVoid when the server says we are not a member of the space. */
+export class NotInSpaceError extends Error {}
+
 /** Thrown by connectToVoid when the server rejected our token. */
 export class NotSignedInError extends Error {}
 
 export async function connectToVoid(url: string, options: JoinOptions): Promise<VoidConnection> {
   const room = await new Client(url).joinOrCreate(ROOM_NAME, options).catch((err) => {
-    if ((err as { code?: number }).code === 401) throw new NotSignedInError("not signed in");
+    const code = (err as { code?: number }).code;
+    if (code === 401) throw new NotSignedInError("not signed in");
+    if (code === 403) throw new NotInSpaceError("not in this space");
     throw err;
   });
   const $ = getStateCallbacks(room);
@@ -52,6 +61,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
   let leaving = false;
   const snapshot = (p: any, id: string): PlayerSnapshot => ({
     id,
+    userId: p.userId,
     name: p.name,
     // The room only ever stores a validated look, so the fallback is for a bad edit by hand.
     look: decodeLook(p.look) ?? DEFAULT_LOOK,
@@ -68,6 +78,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     onPlayerMove: (cb) =>
       players.onAdd((p: any, id: string) => $(p).onChange(() => cb(snapshot(p, id)))),
     onPlayerRemove: (cb) => players.onRemove((_: any, id: string) => cb(id)),
+    onSnap: (cb) => room.onMessage(MESSAGES.SNAP, cb),
     onDrop: (cb) =>
       room.onDrop(() => {
         if (!leaving) cb();

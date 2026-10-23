@@ -8,6 +8,10 @@ export const MAP_COLS = 40;
 export const MAP_ROWS = 30;
 export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
+// Movement. The server uses these to check a move is possible, the client to make it.
+export const PLAYER_SPEED = 180;
+export const PLAYER_RADIUS = 12;
+
 export const SPAWN = { x: 10 * TILE_SIZE + TILE_SIZE / 2, y: 20 * TILE_SIZE + TILE_SIZE / 2 };
 
 // A character is five layered parts from the LimeZu character generator, drawn in this order.
@@ -58,6 +62,53 @@ export function decodeLook(text: string): Look | undefined {
   return isLook(look) ? look : undefined;
 }
 
+// Collision. One implementation for both sides, so what the client allows the server allows too.
+export interface CollisionGrid {
+  tileSize: number;
+  cols: number;
+  rows: number;
+  /** Row-major, cols * rows. */
+  blocked: boolean[];
+}
+
+export function createGrid(
+  cols: number,
+  rows: number,
+  tileSize: number,
+  isBlocked: (col: number, row: number) => boolean,
+): CollisionGrid {
+  const blocked: boolean[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) blocked.push(isBlocked(col, row));
+  }
+  return { tileSize, cols, rows, blocked };
+}
+
+function tileBlocked(grid: CollisionGrid, col: number, row: number): boolean {
+  // Outside the map counts as solid so players can never leave it.
+  if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return true;
+  return grid.blocked[row * grid.cols + col]!;
+}
+
+/** True if a circle at (x, y) overlaps any blocked tile. */
+export function collidesCircle(grid: CollisionGrid, x: number, y: number, radius: number): boolean {
+  const { tileSize } = grid;
+  const minCol = Math.floor((x - radius) / tileSize);
+  const maxCol = Math.floor((x + radius) / tileSize);
+  const minRow = Math.floor((y - radius) / tileSize);
+  const maxRow = Math.floor((y + radius) / tileSize);
+
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      if (!tileBlocked(grid, col, row)) continue;
+      const nearestX = Math.max(col * tileSize, Math.min(x, (col + 1) * tileSize));
+      const nearestY = Math.max(row * tileSize, Math.min(y, (row + 1) * tileSize));
+      if ((x - nearestX) ** 2 + (y - nearestY) ** 2 < radius * radius) return true;
+    }
+  }
+  return false;
+}
+
 // Players closer than this (in tiles) hear and see each other.
 export const PROXIMITY_TILES = 3;
 export const PROXIMITY_RADIUS = PROXIMITY_TILES * TILE_SIZE;
@@ -68,6 +119,8 @@ export const MESSAGES = {
   VOICE_TOKEN: "voice-token",
   // After an account edit over HTTP: the room re-reads the name and look from the database.
   REFRESH_PROFILE: "refresh-profile",
+  // Server to client: a move was refused, so the client puts the player back where the server has them.
+  SNAP: "snap",
 } as const;
 
 export interface VoiceToken {
@@ -143,6 +196,42 @@ export interface ApiError {
 /** Colyseus join options. Identity comes from the token, never from a client-sent name. */
 export interface JoinOptions {
   token: string;
+  spaceId: string;
+}
+
+// Spaces. A space is its own room with its own members; the role decides what a member may do.
+export const SPACE_ROLES = ["owner", "admin", "member"] as const;
+export type SpaceRole = (typeof SPACE_ROLES)[number];
+export const MAX_SPACE_NAME_LENGTH = 40;
+// Stops one account from filling the database with rooms.
+export const MAX_OWNED_SPACES = 5;
+// Only the office exists so far; the template picks the map a new space starts from.
+export const SPACE_TEMPLATES = ["office"] as const;
+export type SpaceTemplate = (typeof SPACE_TEMPLATES)[number];
+
+export const SPACE_ROUTES = {
+  // GET lists the spaces you belong to, POST creates one.
+  LIST: "/spaces",
+  // Append /:id/members to read a space's members.
+  PREFIX: "/spaces/",
+} as const;
+
+export interface SpaceSummary {
+  id: string;
+  name: string;
+  role: SpaceRole;
+  template: SpaceTemplate;
+}
+
+export interface CreateSpacePayload {
+  name: string;
+}
+
+export interface SpaceMember {
+  userId: string;
+  name: string;
+  look: Look;
+  role: SpaceRole;
 }
 
 // Desktop shell bridge. The Electron preload exposes DesktopBridge as `window.voidDesktop`;
