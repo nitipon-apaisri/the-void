@@ -29,6 +29,26 @@ const STYLES = `
 .v-glass { background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
   -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur); }
 .v-scrim { background: rgb(8 9 16 / 0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+
+/* Motion. Panels and dialogs ease in whenever they are shown (a [hidden] element restarts its
+   animation when it appears). The individual translate and scale properties are used so they
+   never fight the transform some panels use to centre themselves. */
+@keyframes v-pop { from { opacity: 0; translate: 0 10px; scale: 0.97; } }
+@keyframes v-fade { from { opacity: 0; } }
+.v-glass:not(.void-toast) { animation: v-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.v-scrim { animation: v-fade 0.18s ease-out; }
+:where(button, select, input, textarea, summary) {
+  transition: background-color 0.16s, border-color 0.16s, color 0.16s, box-shadow 0.16s, filter 0.16s,
+    scale 0.12s, opacity 0.16s;
+}
+:where(button:not(:disabled)):hover { filter: brightness(1.12); }
+:where(button:not(:disabled)):active { scale: 0.96; filter: brightness(0.95); }
+:where(button:disabled) { opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) {
+  .v-glass, .v-scrim { animation: none !important; }
+  :where(button, select, input, textarea, summary) { transition: none; }
+  :where(button:not(:disabled)):active { scale: 1; }
+}
 `;
 
 /** Injects the shared design tokens once. Call before a ui module adds its own styles. */
