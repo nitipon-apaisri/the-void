@@ -2,6 +2,7 @@
 import { injectStyle } from "../utils/dom";
 
 export interface AccountBar {
+  setName(name: string): void;
   destroy(): void;
 }
 
@@ -15,17 +16,30 @@ const STYLES = `
 .void-account button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 `;
 
-export function createAccountBar(name: string, onSignOut: () => void): AccountBar {
+export function createAccountBar(
+  name: string,
+  actions: { onSettings: () => void; onSignOut: () => void },
+): AccountBar {
   injectStyle(STYLE_ID, STYLES);
   const root = document.createElement("div");
   root.className = "void-account";
   const label = document.createElement("span");
   label.textContent = name;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "Sign out";
-  button.addEventListener("click", onSignOut);
-  root.append(label, button);
+  const makeButton = (text: string, onClick: () => void) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.addEventListener("click", onClick);
+    return button;
+  };
+  root.append(
+    label,
+    makeButton("Settings", actions.onSettings),
+    makeButton("Sign out", actions.onSignOut),
+  );
   document.body.append(root);
-  return { destroy: () => root.remove() };
+  return {
+    setName: (next) => (label.textContent = next),
+    destroy: () => root.remove(),
+  };
 }

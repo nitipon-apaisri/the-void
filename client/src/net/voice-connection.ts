@@ -18,6 +18,25 @@ import { MAX_SCREEN_SHARES } from "../config/env";
 import { pickScreenSharers } from "../systems/screen-share";
 
 export type MediaKind = "audio" | "video" | "screen";
+export type DeviceKind = "audioinput" | "videoinput" | "audiooutput";
+
+export interface MediaDevice {
+  id: string;
+  label: string;
+}
+
+/**
+ * Devices of one kind. Labels stay empty until the browser has granted mic or camera access
+ * once, so callers should supply their own fallback text.
+ */
+export async function listMediaDevices(kind: DeviceKind): Promise<MediaDevice[]> {
+  try {
+    const devices = await Room.getLocalDevices(kind, false);
+    return devices.map((d) => ({ id: d.deviceId, label: d.label }));
+  } catch {
+    return [];
+  }
+}
 
 /** What scenes and UI know about voice. Keeps LiveKit out of game code. */
 export interface VoiceConnection {
@@ -25,6 +44,8 @@ export interface VoiceConnection {
   setNearby(nearestFirst: readonly string[]): void;
   setMicEnabled(on: boolean): Promise<void>;
   setCameraEnabled(on: boolean): Promise<void>;
+  /** Empty `deviceId` means the system default. Takes effect now if the device is in use. */
+  setDevice(kind: DeviceKind, deviceId: string): Promise<void>;
   /** Rejects if the person cancels the picker or the OS denies capture. */
   setScreenShareEnabled(on: boolean): Promise<void>;
   /** An audio, camera or screen element for a nearby player became available. */
@@ -122,6 +143,14 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
     // No audio: system audio capture differs by OS and is out of scope for now.
     setScreenShareEnabled: async (on) =>
       void (await room.localParticipant.setScreenShareEnabled(on, { audio: false })),
+    async setDevice(kind, deviceId) {
+      try {
+        await room.switchActiveDevice(kind, deviceId || "default");
+      } catch (err) {
+        // Output selection is unsupported in some browsers, and a device can be unplugged.
+        console.warn(`could not switch ${kind}`, err);
+      }
+    },
     onMedia: (cb) => (onMedia = cb),
     onMediaRemoved: (cb) => (onMediaRemoved = cb),
     onPlayerGone: (cb) => (onPlayerGone = cb),

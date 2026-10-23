@@ -2,14 +2,14 @@
 import Phaser from "phaser";
 
 // shared
-import { SPAWN, type AuthSession, type DesktopBridge } from "@void/shared";
+import { SPAWN, TILE_SIZE, type AuthSession, type DesktopBridge } from "@void/shared";
 
 // config
 import {
   API_URL,
   CONNECT_RETRY_MS,
+  DEFAULT_PROXIMITY_TILES,
   PROXIMITY_CHECK_MS,
-  PROXIMITY_RADIUS,
   MOVE_SEND_INTERVAL_MS,
   PLAYER_RADIUS,
   PLAYER_SPEED,
@@ -19,13 +19,15 @@ import {
 
 // net
 import { createAuthClient } from "../net/auth-client";
-import { connectVoice, type VoiceConnection } from "../net/voice-connection";
+import { connectVoice, listMediaDevices, type VoiceConnection } from "../net/voice-connection";
 import { NotSignedInError, connectToVoid, type VoidConnection } from "../net/void-connection";
 
 // systems
 import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/collision";
+import { readDirection } from "../systems/controls";
 import { stepPosition } from "../systems/movement";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
+import { defaultSettings, type Settings } from "../systems/settings";
 
 // objects
 import { PlayerSprite } from "../objects/player";
@@ -34,12 +36,14 @@ import { PlayerSprite } from "../objects/player";
 import { createAccountBar, type AccountBar } from "../ui/account-bar";
 import { promptAuth } from "../ui/auth-form";
 import { chooseScreenSource } from "../ui/screen-picker";
+import { openSettings } from "../ui/settings-window";
 import { createToast, type Toast } from "../ui/toast";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
 import { clearSession, loadSession, saveSession } from "../utils/session";
+import { loadSettings, saveSettings } from "../utils/settings-store";
 
 import mapUrl from "../assets/maps/office.tmj?url";
 import tilesUrl from "../assets/maps/tileset.png";
@@ -60,6 +64,10 @@ export class WorldScene extends Phaser.Scene {
   private me?: PlayerSprite;
   private others = new Map<string, PlayerSprite>();
   private keys!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd!: Record<"W" | "A" | "S" | "D", Phaser.Input.Keyboard.Key>;
+  private readonly defaults = defaultSettings(DEFAULT_PROXIMITY_TILES);
+  private settings: Settings = loadSettings(this.defaults);
+  private closeSettings?: () => void;
   private lastSent = 0;
   private unsent = false;
 
@@ -87,8 +95,10 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     this.keys = this.input.keyboard!.createCursorKeys();
+    this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
     this.toast = createToast();
     this.voicePanel = createVoicePanel();
+    this.voicePanel.setVolume(this.settings.volume);
     this.voicePanel.onToggleMic(async (on) => {
       await this.voice?.setMicEnabled(on);
     });
@@ -102,6 +112,7 @@ export class WorldScene extends Phaser.Scene {
       await this.voice?.setScreenShareEnabled(on);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
       this.toast.destroy();
@@ -113,11 +124,14 @@ export class WorldScene extends Phaser.Scene {
 
   private async enter() {
     // The form's text input must receive arrow keys, so pause game input while it is open.
-    this.input.keyboard!.enabled = false;
+    this.setGameInput(false);
     const session = await this.signIn();
     this.session = session;
-    this.input.keyboard!.enabled = true;
-    this.accountBar = createAccountBar(session.user.name, () => this.signOut());
+    this.setGameInput(true);
+    this.accountBar = createAccountBar(session.user.name, {
+      onSettings: () => this.showSettings(),
+      onSignOut: () => this.signOut(),
+    });
 
     this.me = new PlayerSprite(this, SPAWN.x, SPAWN.y, session.user.name, session.user.avatar);
     this.cameras.main.startFollow(this.me, true, 0.15, 0.15);
@@ -149,6 +163,80 @@ export class WorldScene extends Phaser.Scene {
     return session;
   }
 
+  // Off while a form is open. Disabling the plugin is not enough: Phaser still swallows keys it
+  // captured (arrows, WASD), so those letters could not be typed into a text field.
+  private setGameInput(on: boolean) {
+    const keyboard = this.input.keyboard!;
+    keyboard.enabled = on;
+    if (on) keyboard.enableGlobalCapture();
+    else keyboard.disableGlobalCapture();
+  }
+
+  private showSettings() {
+    const session = this.session;
+    if (!session || this.closeSettings) return;
+    // Arrow keys and WASD belong to the form while it is open, not to the avatar.
+    this.setGameInput(false);
+    this.closeSettings = openSettings(
+      {
+        settings: this.settings,
+        defaults: this.defaults,
+        onSettingsChange: (next) => this.applySettings(next),
+        listDevices: listMediaDevices,
+        account: { profile: session.user, actions: this.accountActions() },
+      },
+      () => {
+        this.closeSettings = undefined;
+        this.setGameInput(true);
+      },
+    );
+  }
+
+  private applySettings(next: Settings) {
+    const prev = this.settings;
+    this.settings = next;
+    saveSettings(next);
+    this.voicePanel.setVolume(next.volume);
+    if (next.micDeviceId !== prev.micDeviceId)
+      void this.voice?.setDevice("audioinput", next.micDeviceId);
+    if (next.cameraDeviceId !== prev.cameraDeviceId) {
+      void this.voice?.setDevice("videoinput", next.cameraDeviceId);
+    }
+    if (next.speakerDeviceId !== prev.speakerDeviceId) {
+      void this.voice?.setDevice("audiooutput", next.speakerDeviceId);
+    }
+  }
+
+  // Edits go over HTTP; the room is then told to copy the stored name and avatar into its state.
+  private accountActions() {
+    const token = () => this.session!.token;
+    const adopt = (user: AuthSession["user"]) => {
+      this.session = this.remember({ token: token(), user });
+      this.me?.setProfile(user.name, user.avatar);
+      this.accountBar?.setName(user.name);
+      this.connection?.refreshProfile();
+      return user;
+    };
+    return {
+      updateProfile: async (name: string, avatar: number) =>
+        adopt(await this.auth.updateProfile(token(), { name, avatar })),
+      changeEmail: async (email: string, currentPassword: string) =>
+        adopt(await this.auth.changeEmail(token(), { email, currentPassword })),
+      changePassword: async (currentPassword: string, newPassword: string) => {
+        this.session = this.remember(
+          await this.auth.changePassword(token(), { currentPassword, newPassword }),
+        );
+      },
+      signOutOthers: async () => {
+        this.session = this.remember(await this.auth.signOutOthers(token()));
+      },
+      deleteAccount: async (password: string) => {
+        await this.auth.deleteAccount(token(), { password });
+        this.signOut();
+      },
+    };
+  }
+
   // A reload is the simplest way to drop every sprite, connection and call at once.
   private signOut() {
     clearSession();
@@ -173,7 +261,9 @@ export class WorldScene extends Phaser.Scene {
       });
       connection.onPlayerMove((p) => {
         const sprite = this.others.get(p.id);
-        if (sprite) this.tweens.add({ targets: sprite, x: p.x, y: p.y, duration: REMOTE_TWEEN_MS });
+        if (!sprite) return;
+        sprite.setProfile(p.name, p.avatar);
+        this.tweens.add({ targets: sprite, x: p.x, y: p.y, duration: REMOTE_TWEEN_MS });
       });
       connection.onPlayerRemove((id) => this.removeOther(id));
       void this.startVoice(connection);
@@ -223,6 +313,11 @@ export class WorldScene extends Phaser.Scene {
       });
       this.voice = voice;
       this.nearby = new Set();
+      // Remembered devices apply to the next time the mic or camera is switched on.
+      const { micDeviceId, cameraDeviceId, speakerDeviceId } = this.settings;
+      if (micDeviceId) void voice.setDevice("audioinput", micDeviceId);
+      if (cameraDeviceId) void voice.setDevice("videoinput", cameraDeviceId);
+      if (speakerDeviceId) void voice.setDevice("audiooutput", speakerDeviceId);
       this.voicePanel.setEnabled(true);
     } catch (err) {
       console.warn("voice unavailable", err);
@@ -231,11 +326,11 @@ export class WorldScene extends Phaser.Scene {
 
   // Arrow keys belong to the picker while it is open, not to the avatar.
   private async pickScreen(bridge: DesktopBridge) {
-    this.input.keyboard!.enabled = false;
+    this.setGameInput(false);
     try {
       await chooseScreenSource(bridge);
     } finally {
-      this.input.keyboard!.enabled = true;
+      this.setGameInput(true);
     }
   }
 
@@ -249,7 +344,7 @@ export class WorldScene extends Phaser.Scene {
 
   private updateProximity(me: PlayerSprite) {
     const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
-    this.nearby = nearbyIds(me, others, PROXIMITY_RADIUS, this.nearby);
+    this.nearby = nearbyIds(me, others, this.settings.proximityTiles * TILE_SIZE, this.nearby);
     this.voice?.setNearby(sortByDistance(me, others, this.nearby));
   }
 
@@ -262,10 +357,19 @@ export class WorldScene extends Phaser.Scene {
     const me = this.me;
     if (!me) return;
 
-    const dir = {
-      dx: (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0),
-      dy: (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0),
-    };
+    const { keys, wasd } = this;
+    const dir = readDirection(
+      {
+        arrows: {
+          up: keys.up.isDown,
+          down: keys.down.isDown,
+          left: keys.left.isDown,
+          right: keys.right.isDown,
+        },
+        wasd: { up: wasd.W.isDown, down: wasd.S.isDown, left: wasd.A.isDown, right: wasd.D.isDown },
+      },
+      this.settings.keys,
+    );
     if (dir.dx || dir.dy) {
       const target = stepPosition(me, dir, PLAYER_SPEED, delta);
       const next = moveWithCollision(this.grid, me, target, PLAYER_RADIUS);

@@ -22,6 +22,8 @@ export interface VoidConnection {
   sendMove(pos: Position): void;
   /** Rejects when the server has no LiveKit configured. */
   requestVoiceToken(): Promise<VoiceToken>;
+  /** Tell the room our name or avatar changed so everyone sees the new one. */
+  refreshProfile(): void;
   onPlayerAdd(cb: (player: PlayerSnapshot) => void): void;
   onPlayerMove(cb: (player: PlayerSnapshot) => void): void;
   onPlayerRemove(cb: (id: string) => void): void;
@@ -57,6 +59,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     sessionId: room.sessionId,
     sendMove: (pos) => room.send(MESSAGES.MOVE, pos),
     requestVoiceToken: () => room.request(MESSAGES.VOICE_TOKEN),
+    refreshProfile: () => room.send(MESSAGES.REFRESH_PROFILE),
     onPlayerAdd: (cb) => players.onAdd((p: any, id: string) => cb(snapshot(p, id))),
     onPlayerMove: (cb) =>
       players.onAdd((p: any, id: string) => $(p).onChange(() => cb(snapshot(p, id)))),

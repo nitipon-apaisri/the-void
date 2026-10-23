@@ -10,6 +10,8 @@ export interface VoicePanel {
   removeMedia(playerId: string, el: HTMLMediaElement): void;
   removePlayer(playerId: string): void;
   setLocalVideo(el: HTMLVideoElement | undefined): void;
+  /** 0 to 1; applies to everyone heard now and to anyone who arrives later. */
+  setVolume(volume: number): void;
   onToggleMic(cb: (on: boolean) => Promise<void>): void;
   onToggleCamera(cb: (on: boolean) => Promise<void>): void;
   onToggleScreen(cb: (on: boolean) => Promise<void>): void;
@@ -91,6 +93,7 @@ export function createVoicePanel(): VoicePanel {
   document.body.append(root);
 
   let localVideo: HTMLVideoElement | undefined;
+  let volume = 1;
   // One element per player and kind, so a repeated track event cannot stack tiles.
   const media = new Map<string, HTMLMediaElement>();
   const key = (playerId: string, kind: string) => `${playerId}:${kind}`;
@@ -120,6 +123,7 @@ export function createVoicePanel(): VoicePanel {
         el.setAttribute("aria-label", "Nearby player video");
         videos.append(el);
       } else {
+        el.volume = volume;
         audio.append(el);
       }
     },
@@ -142,6 +146,10 @@ export function createVoicePanel(): VoicePanel {
       el.muted = true;
       el.setAttribute("aria-label", "Your camera");
       videos.prepend(el);
+    },
+    setVolume(next) {
+      volume = next;
+      for (const el of audio.querySelectorAll("audio")) el.volume = next;
     },
     onToggleMic: (cb) => (toggleMic = cb),
     onToggleCamera: (cb) => (toggleCamera = cb),
