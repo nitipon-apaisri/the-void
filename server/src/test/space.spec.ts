@@ -13,8 +13,11 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
     { userId: "u1", name: "Ada", look: undefined as never, role: "owner" },
   ];
   return {
-    async create(name) {
-      return { id: SPACE_ID, name, role: "owner", template: "office" };
+    async create(name, _ownerId, template) {
+      return { id: SPACE_ID, name, role: "owner", template };
+    },
+    async findTemplate() {
+      return "office";
     },
     async countOwned() {
       return owned;
@@ -41,6 +44,14 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
 describe("parseSpace", () => {
   it("trims the name", () => {
     expect(parseSpace({ name: "  Studio " })).toEqual({ ok: true, value: { name: "Studio" } });
+  });
+
+  it("accepts a known template and rejects an unknown one", () => {
+    expect(parseSpace({ name: "A", template: "studio" })).toEqual({
+      ok: true,
+      value: { name: "A", template: "studio" },
+    });
+    expect(parseSpace({ name: "A", template: "castle" }).ok).toBe(false);
   });
 
   it.each([

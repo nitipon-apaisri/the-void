@@ -50,6 +50,8 @@ export interface VoidConnection {
   /** Owners and admins only. Rejects with the server's reason (in the way, too many pieces). */
   placeFurniture(piece: PlaceFurniturePayload): Promise<void>;
   removeFurniture(id: string): Promise<void>;
+  /** Owners and admins only: removes every placed piece. */
+  clearFurniture(): Promise<void>;
   /** Fires with every placed piece whenever one is added or removed. */
   onFurniture(cb: (pieces: PlacedFurniture[]) => void): void;
   /** Sit on a seat within reach; the room snaps us onto it. Rejects with its reason. */
@@ -135,6 +137,9 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     },
     removeFurniture: async (id) => {
       await room.request(MESSAGES.REMOVE_FURNITURE, { id } satisfies RemoveFurniturePayload);
+    },
+    clearFurniture: async () => {
+      await room.request(MESSAGES.CLEAR_FURNITURE);
     },
     onFurniture: (cb) => {
       const pieces = new Map<string, PlacedFurniture>();

@@ -136,6 +136,7 @@ export const MESSAGES = {
   // Request/response, owners and admins only: place a piece of furniture, or take one away.
   PLACE_FURNITURE: "place-furniture",
   REMOVE_FURNITURE: "remove-furniture",
+  CLEAR_FURNITURE: "clear-furniture",
   // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
   SIT: "sit",
   STAND: "stand",
@@ -282,9 +283,27 @@ export type SpaceRole = (typeof SPACE_ROLES)[number];
 export const MAX_SPACE_NAME_LENGTH = 40;
 // Stops one account from filling the database with rooms.
 export const MAX_OWNED_SPACES = 5;
-// Only the office exists so far; the template picks the map a new space starts from.
-export const SPACE_TEMPLATES = ["office"] as const;
+// The template picks the map a new space starts from (client/src/assets/maps/<id>.tmj).
+export const SPACE_TEMPLATES = ["office", "open-plan", "studio", "empty"] as const;
 export type SpaceTemplate = (typeof SPACE_TEMPLATES)[number];
+export const DEFAULT_TEMPLATE: SpaceTemplate = "office";
+export const isSpaceTemplate = (value: unknown): value is SpaceTemplate =>
+  SPACE_TEMPLATES.includes(value as SpaceTemplate);
+export const SPACE_TEMPLATE_INFO: Record<SpaceTemplate, { name: string; blurb: string }> = {
+  office: {
+    name: "Classic office",
+    blurb: "Rooms and corridors: offices, meeting rooms, lounges and a cafeteria.",
+  },
+  "open-plan": {
+    name: "Open plan",
+    blurb: "One bright floor with tidy desk blocks, meeting rooms and lounges.",
+  },
+  empty: { name: "Empty room", blurb: "Bare walls and floor. Decorate everything yourself." },
+  studio: {
+    name: "Studio",
+    blurb: "A compact room for a small team: a dozen desks, a lounge and a meeting table.",
+  },
+};
 
 export const SPACE_ROUTES = {
   // GET lists the spaces you belong to, POST creates one.
@@ -347,6 +366,8 @@ export interface SpaceSummary {
 
 export interface CreateSpacePayload {
   name: string;
+  /** Defaults to the classic office. */
+  template?: SpaceTemplate;
 }
 
 export interface SpaceMember {

@@ -4,6 +4,7 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 // shared
 import {
   canDecorate,
+  DEFAULT_TEMPLATE,
   encodeLook,
   findFurniture,
   MAX_FURNITURE,
@@ -23,6 +24,7 @@ import {
   type Seat,
   type WavedPayload,
   type SpaceRole,
+  type SpaceTemplate,
 } from "@void/shared";
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
@@ -39,13 +41,19 @@ import { checkClaim, parseClaim } from "./handlers/table.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
 import { Furniture, Player, TableClaim, VoidState } from "./void.state.js";
 
+/** What the server reads from a template's map file. */
+interface SpaceMap {
+  grid: CollisionGrid;
+  tables: MapTable[];
+  seats: Seat[];
+}
+export type SpaceMaps = Record<SpaceTemplate, SpaceMap>;
+
 interface VoidRoomOptions {
   auth: AuthService;
   users: UserRepository;
   spaces: SpaceRepository;
-  grid: CollisionGrid;
-  tables: MapTable[];
-  seats: Seat[];
+  maps: SpaceMaps;
   claims: TableRepository;
   furniture: FurnitureRepository;
   voiceTokens?: VoiceTokenService;
@@ -69,6 +77,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private options!: VoidRoomOptions;
   private spaceId = "";
   // This space's own copy of the walls: placed furniture changes it.
+  private map!: SpaceMap;
   private grid!: CollisionGrid;
   private readonly lastRefresh = new Map<string, number>();
   private readonly budgets = new Map<string, MoveBudget>();
@@ -82,7 +91,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.spaceId = options.spaceId;
     this.options = options;
     this.setState(new VoidState());
-    this.grid = { ...options.grid, blocked: [...options.grid.blocked] };
+    // A space that has no template on record (or one this build lacks) gets the classic office.
+    const template = await options.spaces.findTemplate(this.spaceId);
+    this.map = options.maps[template ?? DEFAULT_TEMPLATE];
+    this.grid = { ...this.map.grid, blocked: [...this.map.grid.blocked] };
     for (const piece of await options.furniture.list(this.spaceId)) {
       const item = findFurniture(piece.itemId);
       if (!item) continue;
@@ -91,18 +103,18 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     }
     for (const claim of await options.claims.listClaims(this.spaceId)) {
       // A claim on a desk the map no longer has stays in the database but is not shown.
-      if (!options.tables.some((t) => t.id === claim.tableId)) continue;
+      if (!this.map.tables.some((t) => t.id === claim.tableId)) continue;
       this.state.tables.set(claim.tableId, this.toClaim(claim.userId, claim.name));
     }
     // Only joined players can ask, and the identity is their session id, never client-supplied.
-    this.onMessage(MESSAGES.VOICE_TOKEN, async (client) => {
+    this.answer(MESSAGES.VOICE_TOKEN, async (client) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) throw new Error("not joined");
       if (!options.voiceTokens) throw new Error("voice unavailable");
       return options.voiceTokens.issue(this.spaceId, client.sessionId, player.name);
     });
     // The edit itself happened over HTTP; this only copies the stored result into room state.
-    this.onMessage(MESSAGES.REFRESH_PROFILE, async (client) => {
+    this.answer(MESSAGES.REFRESH_PROFILE, async (client) => {
       const player = this.state.players.get(client.sessionId);
       const account = (client as Client<{ auth: Account }>).auth;
       const now = Date.now();
@@ -120,7 +132,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
     });
     // Only the two people involved hear about it; nothing is kept in room state.
-    this.onMessage(MESSAGES.WAVE, (client, payload: unknown) => {
+    this.answer(MESSAGES.WAVE, (client, payload: unknown) => {
       const request = parseWave(payload);
       const from = this.state.players.get(client.sessionId);
       const to = request && this.state.players.get(request.targetId);
@@ -137,7 +149,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       client.send(MESSAGES.WAVED, waved);
       this.clients.getById(request.targetId)?.send(MESSAGES.WAVED, waved);
     });
-    this.onMessage(MESSAGES.SIT, (client, payload: unknown) => {
+    this.answer(MESSAGES.SIT, (client, payload: unknown) => {
       const player = this.state.players.get(client.sessionId);
       const request = parseSit(payload);
       if (!player || !request) throw new Error("invalid request");
@@ -152,11 +164,11 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.place(client, player, seat, seat);
       return true;
     });
-    this.onMessage(MESSAGES.STAND, (client) => {
+    this.answer(MESSAGES.STAND, (client) => {
       this.standUp(client.sessionId, client);
       return true;
     });
-    this.onMessage(MESSAGES.PLACE_FURNITURE, async (client, payload: unknown) => {
+    this.answer(MESSAGES.PLACE_FURNITURE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parsePlace(payload);
       if (!account || !canDecorate(account.role))
@@ -178,7 +190,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.state.furniture.set(id, this.toFurniture(item.id, col, row));
       return true;
     });
-    this.onMessage(MESSAGES.REMOVE_FURNITURE, async (client, payload: unknown) => {
+    this.answer(MESSAGES.REMOVE_FURNITURE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parseRemove(payload);
       if (!account || !canDecorate(account.role))
@@ -195,12 +207,28 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.state.furniture.delete(request.id);
       return true;
     });
-    this.onMessage(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {
+    this.answer(MESSAGES.CLEAR_FURNITURE, async (client) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      if (!account || !canDecorate(account.role)) {
+        throw new Error("only owners and admins can decorate");
+      }
+      await options.furniture.clear(this.spaceId);
+      for (const [id, piece] of Array.from(this.state.furniture.entries())) {
+        for (const [sessionId, { seat }] of this.seated) {
+          if (seat.id === `f${id}`) this.standUp(sessionId);
+        }
+        const item = findFurniture(piece.itemId);
+        if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
+        this.state.furniture.delete(id);
+      }
+      return true;
+    });
+    this.answer(MESSAGES.CLAIM_TABLE, async (client, payload: unknown) => {
       const player = this.state.players.get(client.sessionId);
       const request: ClaimTablePayload | null = parseClaim(payload);
       if (!player || !request) throw new Error("invalid request");
       const check = checkClaim(
-        options.tables,
+        this.map.tables,
         this.state.tables,
         player.userId,
         request.tableId,
@@ -213,7 +241,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.state.tables.set(request.tableId, this.toClaim(player.userId, player.name));
       return true;
     });
-    this.onMessage(MESSAGES.UNCLAIM_TABLE, async (client) => {
+    this.answer(MESSAGES.UNCLAIM_TABLE, async (client) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) throw new Error("not joined");
       const tableId = await options.claims.release(this.spaceId, player.userId);
@@ -240,6 +268,21 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     });
   }
 
+  /**
+   * A message that a client may ask for a reply to (`room.request`). A thrown error is the
+   * reply there; sent as a plain message nothing catches it and it would end the server process.
+   */
+  private answer(type: string, handler: (client: Client, payload: unknown) => unknown) {
+    this.onMessage(type, async (client, payload: unknown, ctx?: { id?: unknown }) => {
+      try {
+        return await handler(client, payload);
+      } catch (err) {
+        if (ctx?.id !== undefined) throw err;
+        return undefined;
+      }
+    });
+  }
+
   private allSeats(): Seat[] {
     const pieces = [...this.state.furniture.entries()].map(([id, f]) => ({
       id,
@@ -247,7 +290,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       col: f.col,
       row: f.row,
     }));
-    return [...this.options.seats, ...furnitureSeats(pieces)];
+    return [...this.map.seats, ...furnitureSeats(pieces)];
   }
 
   // Moves a player (onto a seat, or off it) and tells their own client, which would otherwise
@@ -277,7 +320,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     return placementError(this.grid, item, col, row, {
       people: [...this.state.players.values()],
       personRadius: PLAYER_RADIUS,
-      tables: this.options.tables,
+      tables: this.map.tables,
     });
   }
 

@@ -127,290 +127,389 @@ for (const [part, list] of Object.entries(manifest)) {
   }
 }
 
-// ---- map ----
-const blank = () => Array.from({ length: COLS * ROWS }, () => 0);
-const floor = blank();
-const decor = blank();
-const objects = blank();
-// Drawn over players, for the tops of tall things people can walk behind.
-const above = blank();
-// Never drawn. Any tile here blocks movement, so what you see and what you bump into can differ
-// (the art is not tile-aligned: a table can be 2.4 tiles wide inside a 4 tile stamp).
-const collision = blank();
-const at = (x, y) => y * COLS + x;
-const gid = (name, col, row) => sheet[name].firstgid + row * sheet[name].columns + col;
+const officePlan = ({ carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
+  // ---- the floor plan ----
+  // A 3 x 3 grid of rooms (about 30 x 20 tiles each) with doorways between them:
+  //   open office | open office | meeting rooms
+  //   lounge      | plaza       | open office
+  //   cafeteria   | event lounge| open office
+  // Walls sit on x = 30 and 60 and on rows 22-23 and 44-45; the gaps in them are the doors.
 
-const put = (layer, name, col, row, x, y) => {
-  if (x >= 0 && y >= 0 && x < COLS && y < ROWS) layer[at(x, y)] = gid(name, col, row);
-};
-// Copies a w x h block of a sheet to the map, top-left at (x, y).
-const stamp = (layer, name, col, row, w, h, x, y) => {
-  for (let dy = 0; dy < h; dy++)
-    for (let dx = 0; dx < w; dx++) put(layer, name, col + dx, row + dy, x + dx, y + dy);
-};
-const block = (x, y, w = 1, h = 1) => {
-  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) collision[at(x + dx, y + dy)] = 1;
-};
-// Something taller than its footprint: only the bottom `solid` rows block and sit under
-// players; the rows above it are drawn over them, so you can walk behind it.
-const tall = (name, col, row, w, h, x, y, solid = 1) => {
-  stamp(above, name, col, row, w, h - solid, x, y);
-  stamp(objects, name, col, row + h - solid, w, solid, x, y + h - solid);
-  block(x, y + h - solid, w, solid);
-};
-// The middle tile of a floor pattern is plain, so it repeats without visible seams.
-const carpet = (name, col, row, x0, y0, x1, y1) => {
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(floor, name, col, row, x, y);
+  // Floors: grey carpet everywhere, wood in the rooms people gather in.
+  carpet("floors", 1, 5, 1, 2, COLS - 2, ROWS - 3);
+  for (const [x0, y0, x1, y1] of [
+    [61, 2, 88, 21], // meeting rooms
+    [1, 24, 29, 43], // lounge
+    [1, 46, 29, 64], // cafeteria
+    [31, 46, 59, 64], // event lounge
+  ])
+    carpet("floors", 1, 13, x0, y0, x1, y1);
+
+  // Outer walls, then the dividers. Door gaps: columns 13-16, 43-46, 73-76 across the horizontal
+  // walls, rows 10-12, 32-34, 54-56 through the vertical ones.
+  hwall(0, COLS - 1, 0);
+  hwall(0, COLS - 1, ROWS - 2);
+  vwall(0, 2, ROWS - 3);
+  vwall(COLS - 1, 2, ROWS - 3);
+  for (const y of [22, 44])
+    for (const [x0, x1] of [
+      [0, 12],
+      [17, 42],
+      [47, 72],
+      [77, COLS - 1],
+    ])
+      hwall(x0, x1, y);
+  for (const x of [30, 60])
+    for (const [y0, y1] of [
+      [2, 9],
+      [13, 21],
+      [24, 31],
+      [35, 43],
+      [46, 53],
+      [57, 64],
+    ])
+      vwall(x, y0, y1);
+
+  // Top row
+  desks([3, 8, 13, 18, 23], [4, 10, 16]);
+  desks([33, 38, 43, 48, 53], [4, 10, 16]);
+  meeting(64, 6);
+  meeting(76, 6);
+  lounge(64, 15);
+  for (const [x, y] of [
+    [62, 3],
+    [87, 3],
+    [62, 20],
+    [87, 20],
+  ])
+    plant(x, y);
+
+  // Middle row
+  lounge(2, 26);
+  lounge(18, 26);
+  lounge(2, 35);
+  lounge(18, 35);
+  for (const [x, y] of [
+    [33, 26],
+    [53, 26],
+    [33, 36],
+    [53, 36],
+  ])
+    meeting(x, y, false);
+  for (const [x, y] of [
+    [40, 27],
+    [50, 27],
+    [40, 39],
+    [50, 39],
+  ])
+    plant(x, y);
+  desks([63, 68, 73, 78, 83], [26, 32, 38]);
+
+  // Bottom row
+  for (const [x, y] of [
+    [3, 48],
+    [18, 48],
+    [3, 57],
+    [18, 57],
+  ])
+    meeting(x, y, false);
+  for (const [x, y] of [
+    [33, 48],
+    [47, 48],
+    [33, 57],
+    [47, 57],
+  ])
+    lounge(x, y);
+  desks([63, 68, 73, 78, 83], [48, 54, 60]);
 };
 
-// Wall style: grey (rows 4-5 of the wall sheet). Horizontal walls are two tiles tall.
-const W = { row: 4 };
-const hwall = (x0, x1, y) => {
-  for (let x = x0; x <= x1; x++) {
-    const col = x === x0 ? 0 : x === x1 ? 3 : 1 + (x % 2);
-    put(objects, "walls", col, W.row, x, y);
-    put(objects, "walls", col, W.row + 1, x, y + 1);
-    block(x, y, 1, 2);
-  }
-};
-const vwall = (x, y0, y1) => {
-  for (let y = y0; y <= y1; y++) {
-    put(objects, "walls", 5, W.row + 1, x, y);
-    block(x, y);
-  }
+// Open plan: one big light room with tidy desk blocks, glass-free meeting rooms and a lounge.
+const openPlan = ({ W, carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
+  W.row = 2;
+  carpet("floors", 5, 31, 1, 2, COLS - 2, ROWS - 3);
+  carpet("floors", 5, 3, 62, 2, 88, 20);
+  carpet("floors", 5, 3, 1, 34, 59, 64);
+  hwall(0, COLS - 1, 0);
+  hwall(0, COLS - 1, ROWS - 2);
+  vwall(0, 2, ROWS - 3);
+  vwall(COLS - 1, 2, ROWS - 3);
+  // Meeting rooms in the top right corner, one doorway into the open floor.
+  vwall(61, 2, 9);
+  vwall(61, 13, 20);
+  hwall(61, 72, 21);
+  hwall(77, COLS - 1, 21);
+  meeting(64, 8);
+  meeting(76, 8);
+  desks([4, 10, 16, 22, 28], [5, 12, 19, 26]);
+  desks([40, 46, 52], [5, 12, 19, 26]);
+  desks([64, 70, 76, 82], [30, 37, 44]);
+  lounge(3, 38);
+  lounge(16, 38);
+  lounge(3, 48);
+  lounge(16, 48);
+  meeting(40, 40, false);
+  meeting(52, 40, false);
+  meeting(40, 52, false);
+  meeting(52, 52, false);
+  for (const [x, y] of [
+    [2, 3],
+    [37, 3],
+    [59, 3],
+    [37, 33],
+    [59, 33],
+    [2, 62],
+    [37, 62],
+    [59, 62],
+    [87, 62],
+    [87, 26],
+  ])
+    plant(x, y);
 };
 
-// ---- the floor plan ----
-// A 3 x 3 grid of rooms (about 30 x 20 tiles each) with doorways between them:
-//   open office | open office | meeting rooms
-//   lounge      | plaza       | open office
-//   cafeteria   | event lounge| open office
-// Walls sit on x = 30 and 60 and on rows 22-23 and 44-45; the gaps in them are the doors.
+// Empty: a bare hall with nothing in it, for owners who want to decorate everything themselves.
+const emptyPlan = ({ W, carpet, hwall, vwall }) => {
+  W.row = 2;
+  carpet("floors", 5, 31, 1, 2, COLS - 2, ROWS - 3);
+  hwall(0, COLS - 1, 0);
+  hwall(0, COLS - 1, ROWS - 2);
+  vwall(0, 2, ROWS - 3);
+  vwall(COLS - 1, 2, ROWS - 3);
+};
 
-// Every desk is a claimable table (see TABLES_LAYER in @void/shared). The rectangle includes
-// the chair, so you claim it from where you sit.
-const tables = [];
-// Places you can sit (the SEATS_LAYER in @void/shared): a point in pixels and the way you face.
-// A desk chair is drawn by the client, lifted so it tucks under the desk, so it has no tiles.
-const seats = [];
-const SEAT_LIFT = 28;
-const stampDesk = (x, y) => {
-  tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
-  stamp(objects, "generic", 0, 5, 4, 3, x, y);
-  block(x + 1, y, 2, 3);
-  seats.push({
-    x: (x + 1) * TILE + TILE / 2,
-    y: (y + 3) * TILE + TILE - SEAT_LIFT,
-    facing: "up",
-    art: "desk-chair",
-  });
+// Studio: a small team's office, a 50 x 39 room in the middle of the map. The rest is solid.
+const studioPlan = ({ W, carpet, hwall, vwall, desks, meeting, lounge, plant, fillOutside }) => {
+  W.row = 2;
+  carpet("floors", 5, 3, 21, 16, 68, 50);
+  hwall(20, 69, 14);
+  hwall(20, 69, 51);
+  vwall(20, 16, 50);
+  vwall(69, 16, 50);
+  fillOutside(20, 14, 69, 52);
+  desks([24, 30, 36], [18, 25]);
+  desks([52, 58, 64], [18, 25]);
+  meeting(52, 38);
+  lounge(24, 38);
+  lounge(36, 44);
+  for (const [x, y] of [
+    [22, 16],
+    [67, 16],
+    [22, 49],
+    [67, 49],
+    [47, 17],
+    [47, 49],
+  ])
+    plant(x, y);
 };
-// A sofa, table, TV and sideboard; 11 wide and 5 tall.
-const lounge = (x, y) => {
-  stamp(decor, "generic", 9, 4, 4, 3, x, y);
-  stamp(objects, "generic", 6, 11, 3, 2, x + 1, y + 3);
-  block(x + 1, y + 3, 3, 1);
-  tall("generic", 6, 0, 1, 3, x + 6, y);
-  tall("generic", 0, 11, 2, 2, x + 9, y + 2);
-};
-// A table with six chairs; 5 wide and 7 tall, plus a whiteboard 4 rows above when it has one.
-const meeting = (x, y, board = true) => {
-  stamp(objects, "conference", 0, 1, 5, 3, x, y + 2);
-  block(x + 1, y + 2, 3, 3);
-  for (const cy of [y, y + 6])
-    for (const cx of [x, x + 2, x + 4]) {
-      // Far-side chairs face up, so they show their back.
-      if (cy === y) stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
-      else stamp(objects, "conference", 12, 7, 1, 1, cx, cy);
-      block(cx, cy);
-      // Chairs on the near side of the table face down towards it, the far side face up.
-      seats.push({
-        x: cx * TILE + TILE / 2,
-        y: cy * TILE + TILE / 2 + 4,
-        facing: cy === y ? "down" : "up",
-      });
+
+const build = (plan) => {
+  // ---- map ----
+  const blank = () => Array.from({ length: COLS * ROWS }, () => 0);
+  const floor = blank();
+  const decor = blank();
+  const objects = blank();
+  // Drawn over players, for the tops of tall things people can walk behind.
+  const above = blank();
+  // Never drawn. Any tile here blocks movement, so what you see and what you bump into can differ
+  // (the art is not tile-aligned: a table can be 2.4 tiles wide inside a 4 tile stamp).
+  const collision = blank();
+  const at = (x, y) => y * COLS + x;
+  const gid = (name, col, row) => sheet[name].firstgid + row * sheet[name].columns + col;
+
+  const put = (layer, name, col, row, x, y) => {
+    if (x >= 0 && y >= 0 && x < COLS && y < ROWS) layer[at(x, y)] = gid(name, col, row);
+  };
+  // Copies a w x h block of a sheet to the map, top-left at (x, y).
+  const stamp = (layer, name, col, row, w, h, x, y) => {
+    for (let dy = 0; dy < h; dy++)
+      for (let dx = 0; dx < w; dx++) put(layer, name, col + dx, row + dy, x + dx, y + dy);
+  };
+  const block = (x, y, w = 1, h = 1) => {
+    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) collision[at(x + dx, y + dy)] = 1;
+  };
+  // Something taller than its footprint: only the bottom `solid` rows block and sit under
+  // players; the rows above it are drawn over them, so you can walk behind it.
+  const tall = (name, col, row, w, h, x, y, solid = 1) => {
+    stamp(above, name, col, row, w, h - solid, x, y);
+    stamp(objects, name, col, row + h - solid, w, solid, x, y + h - solid);
+    block(x, y + h - solid, w, solid);
+  };
+  // The middle tile of a floor pattern is plain, so it repeats without visible seams.
+  const carpet = (name, col, row, x0, y0, x1, y1) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(floor, name, col, row, x, y);
+  };
+
+  // Wall style: grey (rows 4-5 of the wall sheet). Horizontal walls are two tiles tall.
+  const W = { row: 4 };
+  const hwall = (x0, x1, y) => {
+    for (let x = x0; x <= x1; x++) {
+      const col = x === x0 ? 0 : x === x1 ? 3 : 1 + (x % 2);
+      put(objects, "walls", col, W.row, x, y);
+      put(objects, "walls", col, W.row + 1, x, y + 1);
+      block(x, y, 1, 2);
     }
-  if (board) {
-    stamp(objects, "conference", 10, 1, 2, 2, x + 2, y - 4);
-    block(x + 2, y - 4, 2, 2);
-  }
+  };
+  const vwall = (x, y0, y1) => {
+    for (let y = y0; y <= y1; y++) {
+      put(objects, "walls", 5, W.row + 1, x, y);
+      block(x, y);
+    }
+  };
+
+  // Every desk is a claimable table (see TABLES_LAYER in @void/shared). The rectangle includes
+  // the chair, so you claim it from where you sit.
+  const tables = [];
+  // Places you can sit (the SEATS_LAYER in @void/shared): a point in pixels and the way you face.
+  // A desk chair is drawn by the client, lifted so it tucks under the desk, so it has no tiles.
+  const seats = [];
+  const SEAT_LIFT = 28;
+  const stampDesk = (x, y) => {
+    tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
+    stamp(objects, "generic", 0, 5, 4, 3, x, y);
+    block(x + 1, y, 2, 3);
+    seats.push({
+      x: (x + 1) * TILE + TILE / 2,
+      y: (y + 3) * TILE + TILE - SEAT_LIFT,
+      facing: "up",
+      art: "desk-chair",
+    });
+  };
+  // A sofa, table, TV and sideboard; 11 wide and 5 tall.
+  const lounge = (x, y) => {
+    stamp(decor, "generic", 9, 4, 4, 3, x, y);
+    stamp(objects, "generic", 6, 11, 3, 2, x + 1, y + 3);
+    block(x + 1, y + 3, 3, 1);
+    tall("generic", 6, 0, 1, 3, x + 6, y);
+    tall("generic", 0, 11, 2, 2, x + 9, y + 2);
+  };
+  // A table with six chairs; 5 wide and 7 tall, plus a whiteboard 4 rows above when it has one.
+  const meeting = (x, y, board = true) => {
+    stamp(objects, "conference", 0, 1, 5, 3, x, y + 2);
+    block(x + 1, y + 2, 3, 3);
+    for (const cy of [y, y + 6])
+      for (const cx of [x, x + 2, x + 4]) {
+        // Far-side chairs face up, so they show their back.
+        if (cy === y) stamp(objects, "conference", 11, 6, 1, 1, cx, cy);
+        else stamp(objects, "conference", 12, 7, 1, 1, cx, cy);
+        block(cx, cy);
+        // Chairs on the near side of the table face down towards it, the far side face up.
+        seats.push({
+          x: cx * TILE + TILE / 2,
+          y: cy * TILE + TILE / 2 + 4,
+          facing: cy === y ? "down" : "up",
+        });
+      }
+    if (board) {
+      stamp(objects, "conference", 10, 1, 2, 2, x + 2, y - 4);
+      block(x + 2, y - 4, 2, 2);
+    }
+  };
+  const plant = (x, y) => {
+    stamp(objects, "conference", 13, 7, 1, 1, x, y);
+    block(x, y);
+  };
+  const desks = (xs, ys) => ys.forEach((y) => xs.forEach((x) => stampDesk(x, y)));
+
+  const api = { W, carpet, hwall, vwall, desks, meeting, lounge, plant, tall };
+  api.fillOutside = (x0, y0, x1, y1) => {
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
+        if (x < x0 || x > x1 || y < y0 || y > y1) collision[at(x, y)] = 1;
+  };
+  plan(api);
+  const layer = (id, name, data) => ({
+    id,
+    name,
+    type: "tilelayer",
+    width: COLS,
+    height: ROWS,
+    x: 0,
+    y: 0,
+    opacity: 1,
+    visible: true,
+    data,
+  });
+
+  const map = {
+    compressionlevel: -1,
+    infinite: false,
+    orientation: "orthogonal",
+    renderorder: "right-down",
+    type: "map",
+    version: "1.10",
+    tiledversion: "1.10.2",
+    nextlayerid: 8,
+    nextobjectid: tables.length + seats.length + 1,
+    width: COLS,
+    height: ROWS,
+    tilewidth: TILE,
+    tileheight: TILE,
+    layers: [
+      layer(1, "floor", floor),
+      layer(2, "decor", decor),
+      layer(3, "objects", objects),
+      layer(5, "above", above),
+      { ...layer(4, "collision", collision), visible: false },
+      {
+        id: 6,
+        name: "tables",
+        type: "objectgroup",
+        draworder: "topdown",
+        opacity: 1,
+        visible: false,
+        x: 0,
+        y: 0,
+        objects: tables.map((t, i) => ({
+          id: i + 1,
+          name: `Desk ${i + 1}`,
+          type: "table",
+          rotation: 0,
+          visible: true,
+          ...t,
+        })),
+      },
+      {
+        id: 7,
+        name: "seats",
+        type: "objectgroup",
+        draworder: "topdown",
+        opacity: 1,
+        visible: false,
+        x: 0,
+        y: 0,
+        objects: seats.map((s, i) => ({
+          id: tables.length + i + 1,
+          name: `Seat ${i + 1}`,
+          type: "seat",
+          rotation: 0,
+          visible: true,
+          width: 0,
+          height: 0,
+          x: s.x,
+          y: s.y,
+          properties: [
+            { name: "facing", type: "string", value: s.facing },
+            ...(s.art ? [{ name: "art", type: "string", value: s.art }] : []),
+          ],
+        })),
+      },
+    ],
+    tilesets,
+  };
+  return map;
 };
-const plant = (x, y) => {
-  stamp(objects, "conference", 13, 7, 1, 1, x, y);
-  block(x, y);
-};
-const desks = (xs, ys) => ys.forEach((y) => xs.forEach((x) => stampDesk(x, y)));
 
-// Floors: grey carpet everywhere, wood in the rooms people gather in.
-carpet("floors", 1, 5, 1, 2, COLS - 2, ROWS - 3);
-for (const [x0, y0, x1, y1] of [
-  [61, 2, 88, 21], // meeting rooms
-  [1, 24, 29, 43], // lounge
-  [1, 46, 29, 64], // cafeteria
-  [31, 46, 59, 64], // event lounge
-])
-  carpet("floors", 1, 13, x0, y0, x1, y1);
-
-// Outer walls, then the dividers. Door gaps: columns 13-16, 43-46, 73-76 across the horizontal
-// walls, rows 10-12, 32-34, 54-56 through the vertical ones.
-hwall(0, COLS - 1, 0);
-hwall(0, COLS - 1, ROWS - 2);
-vwall(0, 2, ROWS - 3);
-vwall(COLS - 1, 2, ROWS - 3);
-for (const y of [22, 44])
-  for (const [x0, x1] of [
-    [0, 12],
-    [17, 42],
-    [47, 72],
-    [77, COLS - 1],
-  ])
-    hwall(x0, x1, y);
-for (const x of [30, 60])
-  for (const [y0, y1] of [
-    [2, 9],
-    [13, 21],
-    [24, 31],
-    [35, 43],
-    [46, 53],
-    [57, 64],
-  ])
-    vwall(x, y0, y1);
-
-// Top row
-desks([3, 8, 13, 18, 23], [4, 10, 16]);
-desks([33, 38, 43, 48, 53], [4, 10, 16]);
-meeting(64, 6);
-meeting(76, 6);
-lounge(64, 15);
-for (const [x, y] of [
-  [62, 3],
-  [87, 3],
-  [62, 20],
-  [87, 20],
-])
-  plant(x, y);
-
-// Middle row
-lounge(2, 26);
-lounge(18, 26);
-lounge(2, 35);
-lounge(18, 35);
-for (const [x, y] of [
-  [33, 26],
-  [53, 26],
-  [33, 36],
-  [53, 36],
-])
-  meeting(x, y, false);
-for (const [x, y] of [
-  [40, 27],
-  [50, 27],
-  [40, 39],
-  [50, 39],
-])
-  plant(x, y);
-desks([63, 68, 73, 78, 83], [26, 32, 38]);
-
-// Bottom row
-for (const [x, y] of [
-  [3, 48],
-  [18, 48],
-  [3, 57],
-  [18, 57],
-])
-  meeting(x, y, false);
-for (const [x, y] of [
-  [33, 48],
-  [47, 48],
-  [33, 57],
-  [47, 57],
-])
-  lounge(x, y);
-desks([63, 68, 73, 78, 83], [48, 54, 60]);
-
-const layer = (id, name, data) => ({
-  id,
-  name,
-  type: "tilelayer",
-  width: COLS,
-  height: ROWS,
-  x: 0,
-  y: 0,
-  opacity: 1,
-  visible: true,
-  data,
-});
-
-const map = {
-  compressionlevel: -1,
-  infinite: false,
-  orientation: "orthogonal",
-  renderorder: "right-down",
-  type: "map",
-  version: "1.10",
-  tiledversion: "1.10.2",
-  nextlayerid: 8,
-  nextobjectid: tables.length + seats.length + 1,
-  width: COLS,
-  height: ROWS,
-  tilewidth: TILE,
-  tileheight: TILE,
-  layers: [
-    layer(1, "floor", floor),
-    layer(2, "decor", decor),
-    layer(3, "objects", objects),
-    layer(5, "above", above),
-    { ...layer(4, "collision", collision), visible: false },
-    {
-      id: 6,
-      name: "tables",
-      type: "objectgroup",
-      draworder: "topdown",
-      opacity: 1,
-      visible: false,
-      x: 0,
-      y: 0,
-      objects: tables.map((t, i) => ({
-        id: i + 1,
-        name: `Desk ${i + 1}`,
-        type: "table",
-        rotation: 0,
-        visible: true,
-        ...t,
-      })),
-    },
-    {
-      id: 7,
-      name: "seats",
-      type: "objectgroup",
-      draworder: "topdown",
-      opacity: 1,
-      visible: false,
-      x: 0,
-      y: 0,
-      objects: seats.map((s, i) => ({
-        id: tables.length + i + 1,
-        name: `Seat ${i + 1}`,
-        type: "seat",
-        rotation: 0,
-        visible: true,
-        width: 0,
-        height: 0,
-        x: s.x,
-        y: s.y,
-        properties: [
-          { name: "facing", type: "string", value: s.facing },
-          ...(s.art ? [{ name: "art", type: "string", value: s.art }] : []),
-        ],
-      })),
-    },
-  ],
-  tilesets,
-};
-const mapFile = new URL("maps/office.tmj", root);
-const mapWritten = writeMap || !existsSync(mapFile);
-if (mapWritten) writeFileSync(mapFile, JSON.stringify(map));
+// Each template is one map file; "office" keeps its name so existing links keep working.
+const PLANS = { office: officePlan, "open-plan": openPlan, studio: studioPlan, empty: emptyPlan };
+const written = [];
+for (const [id, plan] of Object.entries(PLANS)) {
+  const mapFile = new URL(`maps/${id}.tmj`, root);
+  if (!writeMap && existsSync(mapFile)) continue;
+  writeFileSync(mapFile, JSON.stringify(build(plan)));
+  written.push(id);
+}
 console.log(
   `copied ${Object.keys(SHEETS).length} sheets and the character parts; ` +
-    (mapWritten ? "wrote office.tmj" : "kept office.tmj (pass --map to regenerate it)"),
+    (written.length
+      ? `wrote ${written.join(", ")}`
+      : "kept the maps (pass --map to regenerate them)"),
 );

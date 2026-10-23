@@ -2,6 +2,7 @@
 import {
   DEFAULT_LOOK,
   decodeLook,
+  isSpaceTemplate,
   type SpaceMember,
   type SpaceRole,
   type SpaceSummary,
@@ -18,7 +19,7 @@ export interface Membership {
 
 export interface SpaceRepository {
   /** Creates the space and makes `ownerId` its owner in one statement. */
-  create(name: string, ownerId: string): Promise<SpaceSummary>;
+  create(name: string, ownerId: string, template: SpaceTemplate): Promise<SpaceSummary>;
   countOwned(ownerId: string): Promise<number>;
   listForUser(userId: string): Promise<SpaceSummary[]>;
   findMembership(spaceId: string, userId: string): Promise<Membership | undefined>;
@@ -28,6 +29,8 @@ export interface SpaceRepository {
   /** Adds a plain member; does nothing if they already belong. */
   addMember(spaceId: string, userId: string): Promise<void>;
   findSummary(spaceId: string, userId: string): Promise<SpaceSummary | undefined>;
+  /** Which map the space uses; undefined for a space that does not exist. */
+  findTemplate(spaceId: string): Promise<SpaceTemplate | undefined>;
 }
 
 interface SummaryRow {
@@ -58,16 +61,16 @@ export const isUuid = (value: unknown): value is string =>
 
 export function createSpaceRepository(db: Queryable): SpaceRepository {
   return {
-    async create(name, ownerId) {
+    async create(name, ownerId, template) {
       const { rows } = await db.query<SummaryRow>(
         `with space as (
-           insert into t_spaces (name, owner_id) values ($1, $2) returning id, name, template
+           insert into t_spaces (name, owner_id, template) values ($1, $2, $3) returning id, name, template
          ), member as (
            insert into t_space_members (space_id, user_id, role)
            select id, $2, 'owner' from space
          )
          select id, name, template, 'owner' as role from space`,
-        [name, ownerId],
+        [name, ownerId, template],
       );
       return toSummary(rows[0]!);
     },
@@ -138,6 +141,15 @@ export function createSpaceRepository(db: Queryable): SpaceRepository {
         [spaceId, userId],
       );
       return rows[0] && toSummary(rows[0]);
+    },
+
+    async findTemplate(spaceId) {
+      const { rows } = await db.query<{ template: string }>(
+        "select template from t_spaces where id = $1 and deleted_at is null",
+        [spaceId],
+      );
+      const template = rows[0]?.template;
+      return isSpaceTemplate(template) ? template : undefined;
     },
 
     async savePosition(spaceId, userId, x, y) {

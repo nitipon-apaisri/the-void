@@ -17,10 +17,11 @@ export const env = {
   port: Number(process.env.PORT ?? 2567),
   databaseUrl: required("DATABASE_URL"),
   authSecret,
-  // The Tiled map whose "collision" layer the server enforces; the client loads the same file.
-  mapFile:
-    process.env.MAP_FILE ??
-    fileURLToPath(new URL("../../../client/src/assets/maps/office.tmj", import.meta.url)),
+  // The Tiled maps (one <template>.tmj each) whose "collision" layer the server enforces; the
+  // client loads the same files.
+  mapsDir:
+    process.env.MAPS_DIR ??
+    fileURLToPath(new URL("../../../client/src/assets/maps/", import.meta.url)),
   // Browser origins allowed to call the HTTP API (the Vite dev server, the packaged client).
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173")
     .split(",")

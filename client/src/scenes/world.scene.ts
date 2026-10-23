@@ -29,6 +29,7 @@ import {
   type Position,
   type SpaceMember,
   type SpaceSummary,
+  type SpaceTemplate,
 } from "@void/shared";
 
 // config
@@ -80,7 +81,7 @@ import { createMapControls, type MapControls } from "../ui/map-controls";
 import { createMinimap, type Minimap } from "../ui/minimap";
 import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
-import { chooseSpace } from "../ui/space-picker";
+import { chooseSpace, type MapPreview } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
 import { createDecoratePanel, type DecoratePanel, type DecorateTool } from "../ui/decorate-panel";
 import { createWaveButton, type WaveButton } from "../ui/wave-button";
@@ -97,7 +98,11 @@ import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
 import { forgetLastSpace, loadLastSpace, saveLastSpace } from "../utils/space-store";
 
-import mapUrl from "../assets/maps/office.tmj?url";
+const mapUrls = import.meta.glob("../assets/maps/*.tmj", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
 
 export class WorldScene extends Phaser.Scene {
   private connection?: VoidConnection;
@@ -178,51 +183,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.tilemapTiledJSON("office", mapUrl);
+    for (const [file, url] of Object.entries(mapUrls)) {
+      this.load.tilemapTiledJSON(`map:${file.split("/").pop()!.replace(".tmj", "")}`, url);
+    }
     for (const [name, url] of Object.entries(tilesetUrls)) this.load.image(name, url);
   }
 
   create() {
-    const map = this.make.tilemap({ key: "office" });
-    const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
-    for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
-    // The tops of tall things (a TV, a shelf) hang over players who walk behind them.
-    if (map.getLayer("above")) map.createLayer("above", tilesets)?.setDepth(20);
-    // "collision" is never drawn: any tile in it blocks movement.
-    const collision = map.getLayer("collision");
-    if (!collision) throw new Error("the map has no collision layer");
-    this.grid = createGrid(
-      map.width,
-      map.height,
-      map.tileWidth,
-      (col, row) => collision.data[row][col].index > 0,
-    );
-    this.setUpTables(map);
-    this.waveButton = createWaveButton(() => this.waveAtTarget());
-    this.setUpSeats(map);
-    this.baseBlocked = [...this.grid.blocked];
-    this.decorate = createDecoratePanel({
-      onToggle: (open) => {
-        if (!open) this.setTool(undefined);
-      },
-      onTool: (tool) => this.setTool(tool),
-    });
-    this.input.keyboard!.on("keydown-ESC", () => this.decorate?.close());
-    this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
-    this.mapControls = createMapControls({
-      onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
-      onZoomOut: () => this.setZoom(stepZoom(this.viewZoom, -1)),
-      onLocate: () => this.showMe(),
-      onToggleMinimap: () => {
-        this.minimapShown = !this.minimapShown;
-        this.minimap?.setVisible(this.minimapShown);
-        this.mapControls?.setMinimapShown(this.minimapShown);
-      },
-    });
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.applyGraphics();
-    this.scale.on(Phaser.Scale.Events.RESIZE, () => this.applyGraphics());
-
     this.keys = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys("W,A,S,D") as typeof this.wasd;
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.pressMap(pointer));
@@ -268,6 +235,50 @@ export class WorldScene extends Phaser.Scene {
     void this.enter();
   }
 
+  // The map depends on the space's template, so it is built once the space is known.
+  private buildWorld(template: SpaceTemplate) {
+    const map = this.make.tilemap({ key: `map:${template}` });
+    const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
+    for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
+    // The tops of tall things (a TV, a shelf) hang over players who walk behind them.
+    if (map.getLayer("above")) map.createLayer("above", tilesets)?.setDepth(20);
+    // "collision" is never drawn: any tile in it blocks movement.
+    const collision = map.getLayer("collision");
+    if (!collision) throw new Error("the map has no collision layer");
+    this.grid = createGrid(
+      map.width,
+      map.height,
+      map.tileWidth,
+      (col, row) => collision.data[row][col].index > 0,
+    );
+    this.setUpTables(map);
+    this.waveButton = createWaveButton(() => this.waveAtTarget());
+    this.setUpSeats(map);
+    this.baseBlocked = [...this.grid.blocked];
+    this.decorate = createDecoratePanel({
+      onToggle: (open) => {
+        if (!open) this.setTool(undefined);
+      },
+      onTool: (tool) => this.setTool(tool),
+      onReset: () => void this.resetDecorations(),
+    });
+    this.input.keyboard!.on("keydown-ESC", () => this.decorate?.close());
+    this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
+    this.mapControls = createMapControls({
+      onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
+      onZoomOut: () => this.setZoom(stepZoom(this.viewZoom, -1)),
+      onLocate: () => this.showMe(),
+      onToggleMinimap: () => {
+        this.minimapShown = !this.minimapShown;
+        this.minimap?.setVisible(this.minimapShown);
+        this.mapControls?.setMinimapShown(this.minimapShown);
+      },
+    });
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.applyGraphics();
+    this.scale.on(Phaser.Scale.Events.RESIZE, () => this.applyGraphics());
+  }
+
   private async enter() {
     // The form's text input must receive arrow keys, so pause game input while it is open.
     this.setGameInput(false);
@@ -276,6 +287,7 @@ export class WorldScene extends Phaser.Scene {
     this.setGameInput(true);
     const space = await this.pickSpace(session);
     this.space = space;
+    this.buildWorld(space.template);
     this.people = createPeoplePanel({
       onGoTo: (userId) => this.goToUser(userId),
       onTyping: (on) => this.setGameInput(!on),
@@ -347,11 +359,35 @@ export class WorldScene extends Phaser.Scene {
     this.setGameInput(false);
     const space = await chooseSpace({
       load,
-      create: (name) => this.spaces.create(token(), { name }),
+      create: (name, template) => this.spaces.create(token(), { name, template }),
+      preview: (template) => this.previewMap(template),
     });
     this.setGameInput(true);
     saveLastSpace(session.user.id, space.id);
     return space;
+  }
+
+  // The thumbnail in the space picker: the walls of a template's map, read before the scene
+  // has loaded it into Phaser.
+  private async previewMap(template: SpaceTemplate): Promise<MapPreview | undefined> {
+    const url = Object.entries(mapUrls).find(([file]) => file.endsWith(`/${template}.tmj`))?.[1];
+    if (!url) return undefined;
+    try {
+      const map = (await (await fetch(url)).json()) as {
+        width: number;
+        height: number;
+        layers: { name: string; data?: number[] }[];
+      };
+      const data = map.layers.find((l) => l.name === "collision")?.data;
+      if (!data) return undefined;
+      return {
+        cols: map.width,
+        rows: map.height,
+        blocked: (col, row) => data[row * map.width + col]! > 0,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   // Opening a link: ask first, since a link in a message is not a promise anyone meant to join.
@@ -760,6 +796,15 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private async resetDecorations() {
+    try {
+      await this.connection?.clearFurniture();
+      this.toast.show("Decorations removed", "info", 2000);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 2500);
+    }
+  }
+
   private refreshTablePrompt(me: Position) {
     const userId = this.session?.user.id;
     if (!userId) return;
@@ -1158,7 +1203,7 @@ export class WorldScene extends Phaser.Scene {
   // own clicks, so this only sees clicks on the map.
   // A press that stays put is a click and walks on release; one that moves drags the map instead.
   private pressMap(pointer: Phaser.Input.Pointer) {
-    if (!pointer.leftButtonDown()) return;
+    if (!this.me || !pointer.leftButtonDown()) return;
     this.press = { start: { x: pointer.x, y: pointer.y }, last: { x: pointer.x, y: pointer.y } };
   }
 

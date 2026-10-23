@@ -6,6 +6,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_SPACE_NAME_LENGTH,
+  isSpaceTemplate,
   MIN_PASSWORD_LENGTH,
   type ChangeEmailPayload,
   type ChangePasswordPayload,
@@ -116,7 +117,10 @@ export function parseSpace(body: unknown): Parsed<CreateSpacePayload> {
   if (!name || name.length > MAX_SPACE_NAME_LENGTH) {
     return fail(`name must be 1 to ${MAX_SPACE_NAME_LENGTH} characters`);
   }
-  return { ok: true, value: { name } };
+  if (body.template !== undefined && !isSpaceTemplate(body.template)) {
+    return fail("unknown template");
+  }
+  return { ok: true, value: { name, ...(body.template ? { template: body.template } : {}) } };
 }
 
 export function parseInviteOptions(body: unknown): Parsed<InviteOptions> {

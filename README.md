@@ -5,12 +5,12 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 ## What it does
 
 - **Accounts**: sign up with an email and password, edit your name and character, change email or password, sign out other devices, delete your account.
-- **Spaces**: each space is its own room with its own members and its own voice. You pick one after signing in; the last one opens by itself.
+- **Spaces**: each space is its own room with its own members and its own voice. You pick one after signing in; the last one opens by itself. A new space starts from a template: Classic office, Open plan, Studio or an Empty room.
 - **Invite links**: owners and admins share a link, optionally needing their approval; pending people appear in the People panel.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
 - **Sitting**: walk up to a chair and stop to sit down; move or click to stand again.
-- **Decorating**: owners and admins can place furniture from a catalogue and remove it again; it is saved with the space.
+- **Decorating**: owners and admins can place furniture from a catalogue, remove it again or reset all of it; it is saved with the space.
 - **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
@@ -33,6 +33,7 @@ Built and tried by hand:
 - [x] Spaces, members and roles, with a space picker
 - [x] People panel: online and offline, search, walk to someone
 - [x] Invite links, with optional approval
+- [x] Space templates (Classic office, Open plan, Studio, Empty room) picked when a space is created
 - [x] Bigger map (90 x 67 tiles), mini map and map buttons
 - [x] Server-side walls and speed limit
 - [x] Pinch or two-finger scroll to zoom, hold and drag to pan
@@ -93,7 +94,9 @@ The pictures come from the paid [Modern Interiors](https://limezu.itch.io/modern
 
 Buy your own copy, unzip it to `client/src/assets/art/limezu/moderninteriors-win`, and run `npm run assets:import` once (it also takes a path: `npm run assets:import -- /path/to/pack`). Without it the client has no tiles or characters.
 
-The map layout is ours and committed: `client/src/assets/maps/office.tmj`.
+The map layouts are ours and committed: `client/src/assets/maps/<template>.tmj` (`office`, `open-plan`, `studio`, `empty`). `npm run assets:import -- --map` regenerates all of them; the plans are in `scripts/import-art.mjs`.
+
+To see which pieces the sheets hold, run `npm run dev:client` and open `/assets.html`: pick a sheet, click or drag over tiles, and copy their sheet, column, row and size. It reads your local copy of the art and is not part of the production build.
 
 ## Everyday commands
 

@@ -23,6 +23,8 @@ export interface DecorateActions {
   onToggle(open: boolean): void;
   /** The chosen tool changed; undefined means nothing is selected. */
   onTool(tool: DecorateTool | undefined): void;
+  /** The person confirmed removing every placed piece. */
+  onReset(): void;
 }
 
 const PREVIEW = 56;
@@ -113,6 +115,17 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   };
   for (const item of FURNITURE) addButton(item.name, { kind: "item", item }, preview(item));
   addButton("Remove pieces", { kind: "remove" }, undefined, "void-decor-remove");
+
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "void-decor-remove";
+  reset.textContent = "Reset all decorations";
+  reset.addEventListener("click", () => {
+    if (window.confirm("Remove every piece placed in this space? This cannot be undone.")) {
+      actions.onReset();
+    }
+  });
+  grid.append(reset);
 
   const setOpen = (open: boolean) => {
     if (!panel.hidden === open) return;

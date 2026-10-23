@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { collidesCircle, MAP_COLS, MAP_ROWS, PLAYER_RADIUS, SPAWN } from "@void/shared";
+import {
+  collidesCircle,
+  MAP_COLS,
+  MAP_ROWS,
+  PLAYER_RADIUS,
+  SPACE_TEMPLATES,
+  SPAWN,
+} from "@void/shared";
 
 import { parseCollisionGrid } from "../services/map.service.js";
 
@@ -29,8 +36,8 @@ describe("parseCollisionGrid", () => {
     expect(() => parseCollisionGrid(null)).toThrow();
   });
 
-  it("keeps the committed office map walkable at the spawn point", () => {
-    const file = new URL("../../../client/src/assets/maps/office.tmj", import.meta.url);
+  it.each(SPACE_TEMPLATES)("keeps the %s map walkable at the spawn point", (template) => {
+    const file = new URL(`../../../client/src/assets/maps/${template}.tmj`, import.meta.url);
     const grid = parseCollisionGrid(JSON.parse(readFileSync(file, "utf8")));
     expect(collidesCircle(grid, SPAWN.x, SPAWN.y, PLAYER_RADIUS)).toBe(false);
   });

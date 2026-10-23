@@ -9,6 +9,8 @@ export interface FurnitureRepository {
   add(spaceId: string, itemId: string, col: number, row: number, userId: string): Promise<string>;
   /** False when there is no such piece in the space. */
   remove(spaceId: string, id: string): Promise<boolean>;
+  /** Removes every piece placed in the space. */
+  clear(spaceId: string): Promise<void>;
 }
 
 export function createFurnitureRepository(db: Queryable): FurnitureRepository {
@@ -38,6 +40,14 @@ export function createFurnitureRepository(db: Queryable): FurnitureRepository {
         [spaceId, id],
       );
       return rows.length > 0;
+    },
+
+    async clear(spaceId) {
+      await db.query(
+        `update t_furniture set deleted_at = now(), updated_at = now()
+         where space_id = $1 and deleted_at is null`,
+        [spaceId],
+      );
     },
   };
 }
