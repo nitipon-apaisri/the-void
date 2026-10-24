@@ -10,6 +10,7 @@ import type {
 } from "@void/shared";
 
 import type { UserRecord, UserRepository } from "../repositories/user.repository.js";
+import type { SpaceRepository } from "../repositories/space.repository.js";
 import type { PasswordService } from "./password.service.js";
 import type { TokenService } from "./token.service.js";
 
@@ -44,11 +45,13 @@ export const toProfile = (user: UserRecord): UserProfile => ({
 
 interface Deps {
   users: UserRepository;
+  /** Only what closing an account needs from the spaces. */
+  spaces: Pick<SpaceRepository, "handOverOwned">;
   passwords: PasswordService;
   tokens: TokenService;
 }
 
-export function createAuthService({ users, passwords, tokens }: Deps): AuthService {
+export function createAuthService({ users, spaces, passwords, tokens }: Deps): AuthService {
   const session = async (user: UserRecord): Promise<AuthSession> => ({
     token: await tokens.issue(user.id, user.tokenVersion),
     user: toProfile(user),
@@ -122,6 +125,8 @@ export function createAuthService({ users, passwords, tokens }: Deps): AuthServi
 
     async deleteAccount(user, password) {
       await requirePassword(user, password);
+      // Before the account goes, so a space it owns is never left without an owner.
+      await spaces.handOverOwned(user.id);
       await users.remove(user.id);
     },
   };

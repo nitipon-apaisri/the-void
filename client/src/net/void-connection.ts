@@ -70,6 +70,10 @@ export interface VoidConnection {
   onSnap(cb: (pos: Position) => void): void;
   /** The space was emptied and now uses another map. */
   onSpaceReset(cb: () => void): void;
+  /** You were removed from the space; the connection closes right after. */
+  onRemoved(cb: () => void): void;
+  /** Someone joined, left or got a new role: read the member list again. */
+  onMembersChanged(cb: () => void): void;
   /** Connection lost; the SDK is trying to reconnect on its own. */
   onDrop(cb: () => void): void;
   /** The SDK's automatic reconnect succeeded. */
@@ -171,6 +175,8 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     onPlayerRemove: (cb) => players.onRemove((_: any, id: string) => cb(id)),
     onSnap: (cb) => room.onMessage(MESSAGES.SNAP, cb),
     onSpaceReset: (cb) => room.onMessage(MESSAGES.SPACE_RESET, cb),
+    onRemoved: (cb) => room.onMessage(MESSAGES.REMOVED, cb),
+    onMembersChanged: (cb) => room.onMessage(MESSAGES.MEMBERS_CHANGED, cb),
     onDrop: (cb) =>
       room.onDrop(() => {
         if (!leaving) cb();

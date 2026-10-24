@@ -40,6 +40,17 @@ export interface SpaceRepository {
   /** Which map the space uses; undefined for a space that does not exist. */
   findLayout(spaceId: string): Promise<{ template: SpaceTemplate; size: SpaceSize } | undefined>;
   setTemplate(spaceId: string, template: SpaceTemplate): Promise<void>;
+  /** Takes a member out of the space (their row stays, deleted_at). False if they were not in it. */
+  removeMember(spaceId: string, userId: string): Promise<boolean>;
+  /** Admin or member. False if they are not a non-owner member of the space. */
+  setRole(spaceId: string, userId: string, role: "admin" | "member"): Promise<boolean>;
+  /** Makes `toId` the owner and `fromId` an admin in one statement. False if `fromId` is not the owner. */
+  transferOwnership(spaceId: string, fromId: string, toId: string): Promise<boolean>;
+  /**
+   * For a closing account: each space the user owns goes to its longest-standing admin (or else
+   * member), a space nobody else is in is closed, and the user leaves every space they were in.
+   */
+  handOverOwned(userId: string): Promise<void>;
 }
 
 interface SummaryRow {
@@ -168,6 +179,76 @@ export function createSpaceRepository(db: Queryable): SpaceRepository {
       await db.query(
         "update t_spaces set template = $2, updated_at = now() where id = $1 and deleted_at is null",
         [spaceId, template],
+      );
+    },
+
+    async removeMember(spaceId, userId) {
+      const { rows } = await db.query(
+        `update t_space_members set deleted_at = now(), updated_at = now()
+         where space_id = $1 and user_id = $2 and deleted_at is null returning user_id`,
+        [spaceId, userId],
+      );
+      return rows.length > 0;
+    },
+
+    async setRole(spaceId, userId, role) {
+      const { rows } = await db.query(
+        `update t_space_members set role = $3, updated_at = now()
+         where space_id = $1 and user_id = $2 and role <> 'owner' and deleted_at is null
+         returning user_id`,
+        [spaceId, userId, role],
+      );
+      return rows.length > 0;
+    },
+
+    async transferOwnership(spaceId, fromId, toId) {
+      // One statement, so a crash cannot leave a space with two owners or none.
+      const { rows } = await db.query(
+        `with moved as (
+           update t_spaces set owner_id = $3, updated_at = now()
+           where id = $1 and owner_id = $2 and deleted_at is null
+             and exists (select 1 from t_space_members
+                         where space_id = $1 and user_id = $3 and deleted_at is null)
+           returning id
+         )
+         update t_space_members
+         set role = case when user_id = $3 then 'owner' else 'admin' end, updated_at = now()
+         where space_id = $1 and user_id in ($2, $3) and deleted_at is null
+           and exists (select 1 from moved)
+         returning user_id`,
+        [spaceId, fromId, toId],
+      );
+      return rows.length === 2;
+    },
+
+    async handOverOwned(userId) {
+      await db.query(
+        `with owned as (
+           select id from t_spaces where owner_id = $1 and deleted_at is null
+         ),
+         heir as (
+           select distinct on (m.space_id) m.space_id, m.user_id
+           from t_space_members m join t_users u on u.id = m.user_id and u.deleted_at is null
+           where m.space_id in (select id from owned) and m.user_id <> $1 and m.deleted_at is null
+           order by m.space_id, (m.role = 'admin') desc, m.created_at
+         ),
+         moved as (
+           update t_spaces s set owner_id = h.user_id, updated_at = now()
+           from heir h where s.id = h.space_id returning s.id, h.user_id
+         ),
+         promoted as (
+           update t_space_members m set role = 'owner', updated_at = now()
+           from moved mv where m.space_id = mv.id and m.user_id = mv.user_id and m.deleted_at is null
+           returning m.user_id
+         ),
+         closed as (
+           update t_spaces set deleted_at = now(), updated_at = now()
+           where id in (select id from owned) and id not in (select space_id from heir)
+           returning id
+         )
+         update t_space_members set deleted_at = now(), updated_at = now()
+         where user_id = $1 and deleted_at is null`,
+        [userId],
       );
     },
 

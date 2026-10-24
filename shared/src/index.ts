@@ -164,6 +164,10 @@ export const MESSAGES = {
   CLEAR_FURNITURE: "clear-furniture",
   /** Sent to everyone when the space was emptied and its map changed; clients reload. */
   SPACE_RESET: "space-reset",
+  /** Server to one client: you were removed from this space; the connection closes next. */
+  REMOVED: "removed",
+  /** Server to everyone else: the member list or a role changed, so read the list again. */
+  MEMBERS_CHANGED: "members-changed",
   // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
   SIT: "sit",
   STAND: "stand",
@@ -364,6 +368,36 @@ export const SPACE_ROUTES = {
 
 /** Owners and admins may invite people and decide on join requests. */
 export const canManageMembers = (role: SpaceRole) => role === "owner" || role === "admin";
+
+/**
+ * Whether `actor` may take `target` out of the space. Anyone but the owner may leave (the owner
+ * hands the space over first); an owner removes anyone else; an admin removes plain members.
+ */
+export const canRemoveMember = (actor: SpaceRole, target: SpaceRole, self: boolean): boolean => {
+  if (self) return actor !== "owner";
+  if (actor === "owner") return target !== "owner";
+  return actor === "admin" && target === "member";
+};
+
+/**
+ * Whether `actor` may give `target` the role `next`. Only the owner changes roles; "owner" hands
+ * the space over (the old owner becomes an admin), so there is always exactly one.
+ */
+export const canChangeRole = (
+  actor: SpaceRole,
+  target: SpaceRole,
+  next: SpaceRole,
+  self: boolean,
+): boolean => actor === "owner" && !self && target !== "owner" && next !== target;
+
+export interface ChangeRolePayload {
+  role: SpaceRole;
+}
+
+/** Published on `memberChannel(spaceId)` when the HTTP API changes who may be in a space. */
+export const memberChannel = (spaceId: string) => `space:${spaceId}:members`;
+export type MemberEvent =
+  { kind: "removed"; userId: string } | { kind: "role"; userId: string; role: SpaceRole };
 
 // Invite links. The token is shown once when the link is made; the server keeps only a hash.
 export const INVITE_ROUTES = {

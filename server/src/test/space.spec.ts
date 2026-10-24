@@ -20,6 +20,16 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
       return { template: "office", size: "medium" };
     },
     async setTemplate() {},
+    async removeMember() {
+      return true;
+    },
+    async setRole() {
+      return true;
+    },
+    async transferOwnership() {
+      return true;
+    },
+    async handOverOwned() {},
     async countOwned() {
       return owned;
     },

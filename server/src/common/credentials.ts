@@ -7,10 +7,12 @@ import {
   MAX_PASSWORD_LENGTH,
   MAX_SPACE_NAME_LENGTH,
   isSpaceSize,
+  SPACE_ROLES,
   isSpaceTemplate,
   MIN_PASSWORD_LENGTH,
   type ChangeEmailPayload,
   type ChangePasswordPayload,
+  type ChangeRolePayload,
   type CreateSpacePayload,
   type DeleteAccountPayload,
   type InviteOptions,
@@ -146,4 +148,9 @@ export function parseInviteOptions(body: unknown): Parsed<InviteOptions> {
     return fail("invalid expiry");
   }
   return { ok: true, value: { requiresApproval, expiresInHours } };
+}
+
+export function parseRoleChange(body: unknown): Parsed<ChangeRolePayload> {
+  if (!isObject(body) || !SPACE_ROLES.includes(body.role as never)) return fail("unknown role");
+  return { ok: true, value: { role: body.role as ChangeRolePayload["role"] } };
 }

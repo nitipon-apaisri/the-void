@@ -6,9 +6,10 @@ import { rateLimit } from "express-rate-limit";
 import { SPACE_ROUTES, type ApiError } from "@void/shared";
 
 import { allowOrigins } from "../common/cors.js";
-import { parseInviteOptions, parseSpace } from "../common/credentials.js";
+import { parseInviteOptions, parseRoleChange, parseSpace } from "../common/credentials.js";
 import { AuthError, type AuthService } from "../services/auth.service.js";
 import type { InviteService } from "../services/invite.service.js";
+import type { MemberService } from "../services/member.service.js";
 import type { SpaceService } from "../services/space.service.js";
 import { respondAs } from "./http.js";
 
@@ -16,6 +17,7 @@ interface Options {
   auth: AuthService;
   spaces: SpaceService;
   invites: InviteService;
+  members: MemberService;
   corsOrigins: readonly string[];
 }
 
@@ -24,7 +26,7 @@ const BODY_LIMIT = "1kb";
 /** Mounts the space endpoints. Every one needs a valid token; membership is checked per space. */
 export function mountSpaceRoutes(
   app: Application,
-  { auth, spaces, invites, corsOrigins }: Options,
+  { auth, spaces, invites, members, corsOrigins }: Options,
 ) {
   app.use(SPACE_ROUTES.LIST, allowOrigins(corsOrigins));
 
@@ -53,6 +55,28 @@ export function mountSpaceRoutes(
 
   app.get(space("/members"), (req, res) =>
     respondAs(auth, req, res, (id) => spaces.members(id, String(req.params.spaceId))),
+  );
+
+  app.patch(space("/members/:userId"), json, (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      const parsed = parseRoleChange(req.body);
+      if (!parsed.ok) throw new AuthError(400, parsed.error);
+      await members.setRole(
+        id,
+        String(req.params.spaceId),
+        String(req.params.userId),
+        parsed.value.role,
+      );
+      return {};
+    }),
+  );
+
+  // Removing yourself is leaving the space.
+  app.delete(space("/members/:userId"), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await members.remove(id, String(req.params.spaceId), String(req.params.userId));
+      return {};
+    }),
   );
 
   app.get(space("/invites"), (req, res) =>

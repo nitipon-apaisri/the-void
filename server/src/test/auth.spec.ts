@@ -56,6 +56,7 @@ function fakeUsers(): UserRepository {
 const newAuth = () =>
   createAuthService({
     users: fakeUsers(),
+    spaces: { handOverOwned: async () => {} },
     passwords: createPasswordService(),
     tokens: createTokenService("s".repeat(32)),
   });

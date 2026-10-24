@@ -1,5 +1,11 @@
 // shared
-import type { JoinRequest, SpaceMember } from "@void/shared";
+import {
+  canChangeRole,
+  canRemoveMember,
+  type JoinRequest,
+  type SpaceMember,
+  type SpaceRole,
+} from "@void/shared";
 
 // ui
 import { applyTheme } from "./theme";
@@ -14,6 +20,8 @@ export interface PeoplePanel {
   /** Owners and admins see the Invite button and the people waiting to be let in. */
   setCanManage(can: boolean): void;
   setRequests(requests: readonly JoinRequest[]): void;
+  /** Who is looking, which decides the actions each row offers. */
+  setViewer(userId: string, role: SpaceRole): void;
   toggle(): void;
   isOpen(): boolean;
   destroy(): void;
@@ -28,18 +36,23 @@ export interface PeoplePanelActions {
   onInvite(): void;
   /** Resolves when the server has recorded the decision. */
   onDecide(userId: string, approve: boolean): Promise<void>;
+  /** The caller confirms and talks to the server; resolves when done. */
+  onSetRole(member: SpaceMember, role: SpaceRole): Promise<void>;
+  onRemove(member: SpaceMember): Promise<void>;
+  /** The viewer leaves the space (any role but owner). */
+  onLeave(): void;
 }
 
 const STYLE_ID = "void-people-style";
 const STYLES = `
 .void-people { position: fixed; top: 64px; right: 14px; z-index: 880; width: 280px; max-height: calc(100vh - 140px);
-  display: none; grid-template-rows: auto 1fr; gap: 10px; padding: 14px; border-radius: var(--v-radius);
+  display: none; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--v-radius);
   font: 13px/1.4 var(--v-font); color: var(--v-text); }
-.void-people[data-open="true"] { display: grid; }
+.void-people[data-open="true"] { display: flex; }
 .void-people input { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; }
 .void-people input:focus { outline: none; border-color: var(--v-accent); }
-.void-people__list { overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+.void-people__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
 .void-people h2 { margin: 8px 6px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--v-muted); }
 .void-people__row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--v-radius-sm);
   background: none; color: inherit; font: inherit; text-align: left; }
@@ -50,6 +63,22 @@ const STYLES = `
 .void-people__row[data-online="true"] .void-people__dot { background: var(--v-on); opacity: 1; box-shadow: 0 0 8px var(--v-on); }
 .void-people__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .void-people__role { font-size: 11px; color: var(--v-muted); text-transform: capitalize; }
+.void-people__item { display: grid; }
+.void-people__line { display: flex; align-items: center; gap: 2px; }
+.void-people__line .void-people__row { flex: 1; min-width: 0; }
+.void-people__more { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--v-muted);
+  font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.void-people__more:hover, .void-people__more[aria-expanded="true"] { background: var(--v-hover); color: var(--v-text); }
+.void-people__menu { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 8px 26px; }
+.void-people__menu button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+  color: var(--v-text); font: inherit; font-size: 12px; cursor: pointer; }
+.void-people__menu button:hover:not(:disabled) { background: var(--v-hover); }
+.void-people__menu button.danger { color: var(--v-danger, #e5484d); }
+.void-people__menu button:disabled { opacity: 0.5; cursor: wait; }
+.void-people__leave { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: none;
+  color: var(--v-muted); font: inherit; font-size: 12px; cursor: pointer; justify-self: start; }
+.void-people__leave:hover { background: var(--v-hover); color: var(--v-text); }
+.void-people__leave[hidden] { display: none; }
 .void-people__empty { margin: 8px 6px; color: var(--v-muted); }
 .void-people__invite { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; font-weight: 550; cursor: pointer; }
@@ -87,13 +116,22 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
   invite.textContent = "Invite people";
   invite.hidden = true;
   invite.addEventListener("click", () => actions.onInvite());
-  root.append(invite, search, list);
+  const leave = document.createElement("button");
+  leave.type = "button";
+  leave.className = "void-people__leave";
+  leave.textContent = "Leave space";
+  leave.hidden = true;
+  leave.addEventListener("click", () => actions.onLeave());
+  root.append(invite, search, list, leave);
   document.body.append(root);
 
   let members: readonly SpaceMember[] = [];
   let online: ReadonlySet<string> = new Set();
   let requests: readonly JoinRequest[] = [];
   let canManage = false;
+  let viewer: { userId: string; role: SpaceRole } | undefined;
+  // The person whose actions are showing.
+  let menuFor: string | undefined;
 
   const row = (member: SpaceMember, isOnline: boolean) => {
     const button = document.createElement("button");
@@ -111,7 +149,70 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     role.textContent = member.role === "member" ? "" : member.role;
     button.append(dot, name, role);
     if (isOnline) button.addEventListener("click", () => actions.onGoTo(member.userId));
-    return button;
+
+    const item = document.createElement("div");
+    item.className = "void-people__item";
+    const line = document.createElement("div");
+    line.className = "void-people__line";
+    line.append(button);
+    item.append(line);
+    const available = viewer ? menuOptions(member) : [];
+    if (available.length > 0) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "void-people__more";
+      more.textContent = "⋯";
+      more.setAttribute("aria-label", `Actions for ${member.name}`);
+      more.setAttribute("aria-expanded", String(menuFor === member.userId));
+      more.addEventListener("click", () => {
+        menuFor = menuFor === member.userId ? undefined : member.userId;
+        render();
+      });
+      line.append(more);
+      if (menuFor === member.userId) item.append(menu(available));
+    }
+    return item;
+  };
+
+  // What the viewer may do to this person, from the same rules the server enforces.
+  const menuOptions = (member: SpaceMember) => {
+    if (!viewer || member.userId === viewer.userId) return [];
+    const options: { label: string; danger?: boolean; run: () => Promise<void> }[] = [];
+    const setRole = (role: SpaceRole, label: string) => {
+      if (canChangeRole(viewer!.role, member.role, role, false)) {
+        options.push({ label, run: () => actions.onSetRole(member, role) });
+      }
+    };
+    setRole("admin", "Make admin");
+    setRole("member", "Make member");
+    setRole("owner", "Make owner");
+    if (canRemoveMember(viewer.role, member.role, false)) {
+      options.push({ label: "Remove", danger: true, run: () => actions.onRemove(member) });
+    }
+    return options;
+  };
+
+  const menu = (options: ReturnType<typeof menuOptions>) => {
+    const box = document.createElement("div");
+    box.className = "void-people__menu";
+    for (const option of options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = option.label;
+      if (option.danger) button.className = "danger";
+      button.addEventListener("click", async () => {
+        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        try {
+          await option.run();
+          menuFor = undefined;
+        } catch {
+          // The caller shows the reason; the menu stays so it can be tried again.
+        }
+        render();
+      });
+      box.append(button);
+    }
+    return box;
   };
 
   const section = (title: string, rows: HTMLElement[]) => {
@@ -205,6 +306,11 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     setCanManage(can) {
       canManage = can;
       invite.hidden = !can;
+      render();
+    },
+    setViewer(userId, role) {
+      viewer = { userId, role };
+      leave.hidden = role === "owner";
       render();
     },
     setRequests(next) {

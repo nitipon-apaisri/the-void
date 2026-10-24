@@ -4,6 +4,7 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 // shared
 import {
   canEmptySpace,
+  canRemovePiece,
   DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
   encodeLook,
@@ -14,9 +15,11 @@ import {
   placementError,
   setBlocked,
   MAX_CLIENTS,
+  memberChannel,
   MESSAGES,
   type ClaimTablePayload,
   type CollisionGrid,
+  type MemberEvent,
   type JoinOptions,
   type Look,
   furnitureSeats,
@@ -86,6 +89,9 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   // Who sits where, and where they stood before, so standing up can put them back.
   private readonly seated = new Map<string, { seat: Seat; before: Position }>();
   private readonly lastWave = new Map<string, number>();
+  // Who placed each piece (by piece id); a piece from before this was recorded has no entry.
+  private readonly placedBy = new Map<string, string>();
+  private readonly onMemberEvent = (event: MemberEvent) => this.applyMemberEvent(event);
 
   async onCreate(options: VoidRoomOptions & Partial<JoinOptions>) {
     // A made-up id would otherwise leave an empty room behind until it times out.
@@ -102,6 +108,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const item = findFurniture(piece.itemId);
       if (!item) continue;
       this.state.furniture.set(piece.id, this.toFurniture(piece.itemId, piece.col, piece.row));
+      if (piece.placedBy) this.placedBy.set(piece.id, piece.placedBy);
       setBlocked(this.grid, item, piece.col, piece.row, true);
     }
     for (const claim of await options.claims.listClaims(this.spaceId)) {
@@ -189,6 +196,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       setBlocked(this.grid, item, col, row, true);
       this.state.furniture.set(id, this.toFurniture(item.id, col, row));
+      this.placedBy.set(id, account.userId);
       return true;
     });
     this.answer(MESSAGES.REMOVE_FURNITURE, async (client, payload: unknown) => {
@@ -197,6 +205,9 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!account) throw new Error("not joined");
       const piece = request && this.state.furniture.get(request.id);
       if (!request || !piece) throw new Error("that piece is gone");
+      if (!canRemovePiece(account.role, account.userId, this.placedBy.get(request.id))) {
+        throw new Error("only the person who placed it, an owner or an admin can remove it");
+      }
       await options.furniture.remove(this.spaceId, request.id);
       // Whoever sits on a chair that goes away is put back on their feet.
       for (const [sessionId, { seat }] of this.seated) {
@@ -205,6 +216,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const item = findFurniture(piece.itemId);
       if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
       this.state.furniture.delete(request.id);
+      this.placedBy.delete(request.id);
       return true;
     });
     this.answer(MESSAGES.CLEAR_FURNITURE, async (client) => {
@@ -221,6 +233,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
         if (item) setBlocked(this.grid, item, piece.col, piece.row, false);
         this.state.furniture.delete(id);
       }
+      this.placedBy.clear();
       // The map's own furniture is baked into the template, so emptying the space means moving
       // it to the empty template. This room still holds the old map: close it and let clients
       // rejoin a fresh one.
@@ -272,6 +285,35 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       player.x = pos.x;
       player.y = pos.y;
     });
+    // Removals and role changes happen over HTTP; this is how the people already in hear of them.
+    await this.presence.subscribe(memberChannel(this.spaceId), this.onMemberEvent);
+  }
+
+  async onDispose() {
+    await this.presence.unsubscribe(memberChannel(this.spaceId), this.onMemberEvent);
+  }
+
+  private applyMemberEvent(event: MemberEvent) {
+    const gone: Client[] = [];
+    for (const client of this.clients) {
+      const account = (client as Client<{ auth: Account }>).auth;
+      if (account?.userId !== event.userId) continue;
+      if (event.kind === "role") {
+        // Takes effect on the next action they try, without a rejoin.
+        account.role = event.role;
+        continue;
+      }
+      gone.push(client);
+      client.send(MESSAGES.REMOVED);
+      // Leave a moment for the message to arrive before the socket closes.
+      this.clock.setTimeout(() => client.leave(), 300);
+    }
+    if (event.kind === "removed") {
+      for (const [id, claim] of Array.from(this.state.tables.entries())) {
+        if (claim.userId === event.userId) this.state.tables.delete(id);
+      }
+    }
+    this.broadcast(MESSAGES.MEMBERS_CHANGED, undefined, { except: gone });
   }
 
   /**

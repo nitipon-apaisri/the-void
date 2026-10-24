@@ -202,6 +202,10 @@ export interface RemoveFurniturePayload {
 /** Every member decorates, but emptying the whole space (the template's pieces too) is for owners and admins. */
 export const canEmptySpace = (role: SpaceRole) => role === "owner" || role === "admin";
 
+/** Anyone may take away what they placed; owners and admins may take away anything. */
+export const canRemovePiece = (role: SpaceRole, userId: string, placedBy: string | undefined) =>
+  canEmptySpace(role) || (placedBy !== undefined && placedBy === userId);
+
 /** The whole picture of an item placed at (col, row). */
 export const fullRect = (item: FurnitureItem, col: number, row: number): TileRect => ({
   col,

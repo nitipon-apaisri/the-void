@@ -29,6 +29,7 @@ import {
   type MapTable,
   type Position,
   type SpaceMember,
+  type SpaceRole,
   type SpaceSummary,
   type SpaceSize,
   type SpaceTemplate,
@@ -110,6 +111,7 @@ export class WorldScene extends Phaser.Scene {
   private connection?: VoidConnection;
   private connecting = false;
   private wasOffline = false;
+  private removed = false;
   private toast!: Toast;
   private voicePanel!: VoicePanel;
   private voice?: VoiceConnection;
@@ -297,7 +299,11 @@ export class WorldScene extends Phaser.Scene {
       onToggle: (open) => this.accountBar?.setPeopleOpen(open),
       onInvite: () => this.showInvite(),
       onDecide: (userId, approve) => this.decideRequest(userId, approve),
+      onSetRole: (member, role) => this.changeRole(member, role),
+      onRemove: (member) => this.removeMember(member),
+      onLeave: () => void this.leaveSpace(),
     });
+    this.people.setViewer(session.user.id, space.role);
     this.watchRequests(space);
     this.accountBar = createAccountBar(session.user.name, {
       onPeople: () => this.people?.toggle(),
@@ -503,6 +509,63 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private async changeRole(member: SpaceMember, role: SpaceRole) {
+    const { session, space } = this;
+    if (!session || !space) return;
+    if (role === "owner") {
+      const ok = await confirmDialog({
+        title: `Hand ${space.name} to ${member.name}?`,
+        body: "They become the owner and you become an admin. Only they can undo it.",
+        confirmLabel: "Make owner",
+      });
+      if (!ok) throw new Error("cancelled");
+    }
+    try {
+      await this.spaces.setRole(session.token, space.id, member.userId, role);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 4000);
+      throw err;
+    }
+    // Handing the space over changes our own role too; loadMembers notices and reloads.
+    await this.loadMembers();
+  }
+
+  private async removeMember(member: SpaceMember) {
+    const { session, space } = this;
+    if (!session || !space) return;
+    const ok = await confirmDialog({
+      title: `Remove ${member.name}?`,
+      body: "They lose access to this space and give up their desk. They can come back through an invite link.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) throw new Error("cancelled");
+    try {
+      await this.spaces.removeMember(session.token, space.id, member.userId);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 4000);
+      throw err;
+    }
+    await this.loadMembers();
+  }
+
+  private async leaveSpace() {
+    const { session, space } = this;
+    if (!session || !space) return;
+    const ok = await confirmDialog({
+      title: `Leave ${space.name}?`,
+      body: "You give up your desk. You can come back through an invite link.",
+      confirmLabel: "Leave",
+    });
+    if (!ok) return;
+    try {
+      await this.spaces.removeMember(session.token, space.id, session.user.id);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not leave", "error", 4000);
+      return;
+    }
+    this.switchSpace();
+  }
+
   private switchSpace() {
     forgetLastSpace();
     window.location.reload();
@@ -514,6 +577,16 @@ export class WorldScene extends Phaser.Scene {
     try {
       this.members = await this.spaces.members(session.token, space.id);
       this.people?.setMembers(this.members);
+      // The owner handed the space over, or promoted or demoted us: what we may do changed.
+      const mine = this.members.find((m) => m.userId === session.user.id)?.role;
+      if (mine && mine !== space.role) {
+        this.toast.show(
+          `You are now ${mine === "member" ? "a member" : `the ${mine}`}. Reloading…`,
+          "info",
+          1500,
+        );
+        window.setTimeout(() => window.location.reload(), 1200);
+      }
     } catch (err) {
       console.warn("could not load members", err);
     }
@@ -1027,6 +1100,13 @@ export class WorldScene extends Phaser.Scene {
           this.toast.show(`${wave.name} waved at you 👋`, "info", 3500);
         }
       });
+      connection.onMembersChanged(() => void this.loadMembers());
+      connection.onRemoved(() => {
+        this.removed = true;
+        forgetLastSpace();
+        this.toast.show(`You were removed from ${this.space?.name ?? "this space"}`, "error", 4000);
+        window.setTimeout(() => window.location.reload(), 2000);
+      });
       connection.onSpaceReset(() => {
         // The map changed under us; a fresh load rebuilds it from the stored template.
         this.toast.show("This space was emptied. Reloading…", "info", 1500);
@@ -1044,6 +1124,8 @@ export class WorldScene extends Phaser.Scene {
         this.toast.show("Back online", "success", 2500);
       });
       connection.onDisconnect(() => {
+        // Removed from the space: the page reloads to the picker, so do not try to reconnect.
+        if (this.removed) return;
         this.seatOf.clear();
         this.leaveSeat();
         this.connection = undefined;

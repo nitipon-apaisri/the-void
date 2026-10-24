@@ -1,11 +1,11 @@
 // lib
 import path from "node:path";
 
-import { Server } from "@colyseus/core";
+import { matchMaker, Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 
 // shared
-import { mapName, ROOM_NAME, SPACE_SIZES, SPACE_TEMPLATES } from "@void/shared";
+import { mapName, memberChannel, ROOM_NAME, SPACE_SIZES, SPACE_TEMPLATES } from "@void/shared";
 
 import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
@@ -22,6 +22,7 @@ import { createAuthService } from "./services/auth.service.js";
 import { loadCollisionGrid, loadSeats, loadTables } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
 import { createInviteService } from "./services/invite.service.js";
+import { createMemberService } from "./services/member.service.js";
 import { createSpaceService } from "./services/space.service.js";
 import { createPasswordService } from "./services/password.service.js";
 import { createTokenService } from "./services/token.service.js";
@@ -29,15 +30,25 @@ import { createVoiceTokenService } from "./services/voice-token.service.js";
 
 const pool = createPool(env.databaseUrl);
 const users = createUserRepository(pool);
+const spaces = createSpaceRepository(pool);
+const claims = createTableRepository(pool);
 const auth = createAuthService({
   users,
+  spaces,
   passwords: createPasswordService(),
   tokens: createTokenService(env.authSecret),
 });
 
-const spaces = createSpaceRepository(pool);
 const spaceService = createSpaceService(spaces);
 const inviteService = createInviteService(createInviteRepository(pool), spaces);
+// The rooms listen on this channel, so a removal or role change reaches someone who is online.
+const memberService = createMemberService({
+  spaces,
+  claims,
+  events: {
+    publish: (spaceId, event) => void matchMaker.presence.publish(memberChannel(spaceId), event),
+  },
+});
 // Read once: a space picks one of these by its template and size, and a bad file should stop
 // the start.
 const maps: SpaceMaps = Object.fromEntries(
@@ -52,7 +63,6 @@ const maps: SpaceMaps = Object.fromEntries(
     }),
   ),
 );
-const claims = createTableRepository(pool);
 const furniture = createFurnitureRepository(pool);
 
 const voiceTokens = createVoiceTokenService(env.livekit);
@@ -69,7 +79,12 @@ const gameServer = new Server({
       trustProxyHops: env.trustProxyHops,
     });
     const routeOptions = { auth, corsOrigins: env.corsOrigins };
-    mountSpaceRoutes(app, { ...routeOptions, spaces: spaceService, invites: inviteService });
+    mountSpaceRoutes(app, {
+      ...routeOptions,
+      spaces: spaceService,
+      invites: inviteService,
+      members: memberService,
+    });
     mountInviteRoutes(app, { ...routeOptions, invites: inviteService });
   },
 });

@@ -11,6 +11,7 @@ import {
   type InviteSummary,
   type JoinRequest,
   type SpaceMember,
+  type SpaceRole,
   type SpaceSummary,
 } from "@void/shared";
 
@@ -27,6 +28,9 @@ export interface SpaceClient {
   revokeInvite(token: string, spaceId: string, inviteId: string): Promise<void>;
   listRequests(token: string, spaceId: string): Promise<JoinRequest[]>;
   decideRequest(token: string, spaceId: string, userId: string, approve: boolean): Promise<void>;
+  // Owners hand roles out; owners and admins remove people; anyone may remove themselves (leave).
+  setRole(token: string, spaceId: string, userId: string, role: SpaceRole): Promise<void>;
+  removeMember(token: string, spaceId: string, userId: string): Promise<void>;
   // Anyone signed in who holds a link.
   previewInvite(token: string, invite: string): Promise<InvitePreview>;
   acceptInvite(token: string, invite: string): Promise<InviteResult>;
@@ -72,6 +76,14 @@ export function createSpaceClient(baseUrl: string): SpaceClient {
         "POST",
         token,
       );
+    },
+    async setRole(token, spaceId, userId, role) {
+      await call(spacePath(spaceId, `/members/${encodeURIComponent(userId)}`), "PATCH", token, {
+        role,
+      });
+    },
+    async removeMember(token, spaceId, userId) {
+      await call(spacePath(spaceId, `/members/${encodeURIComponent(userId)}`), "DELETE", token);
     },
     previewInvite: (token, invite) => call(invitePath(invite), "GET", token),
     acceptInvite: (token, invite) => call(invitePath(invite, "/accept"), "POST", token),
