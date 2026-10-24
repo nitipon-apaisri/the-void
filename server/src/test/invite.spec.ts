@@ -4,25 +4,29 @@ import type { SpaceRole } from "@void/shared";
 import { parseInviteOptions } from "../common/credentials.js";
 import type { InviteRepository, InviteTarget } from "../repositories/invite.repository.js";
 import type { SpaceRepository } from "../repositories/space.repository.js";
-import { createInviteService, hashToken } from "../services/invite.service.js";
+import { createInviteService, hashCode, hashToken } from "../services/invite.service.js";
 
 const SPACE = "11111111-1111-4111-8111-111111111111";
 const INVITE = "22222222-2222-4222-8222-222222222222";
+const SECRET = "s".repeat(32);
 
 function setup(roles: Record<string, SpaceRole>) {
   const members = new Map(Object.entries(roles));
   const stored = new Map<string, InviteTarget>();
+  const byCode = new Map<string, InviteTarget>();
   const requests: string[] = [];
   const log = { created: 0 };
   const invites: InviteRepository = {
     async create(invite) {
       log.created++;
-      stored.set(invite.tokenHash, {
+      const target = {
         id: INVITE,
         spaceId: invite.spaceId,
         spaceName: "Studio",
         requiresApproval: invite.requiresApproval,
-      });
+      };
+      stored.set(invite.tokenHash, target);
+      byCode.set(invite.codeHash, target);
       return {
         id: INVITE,
         requiresApproval: invite.requiresApproval,
@@ -42,6 +46,9 @@ function setup(roles: Record<string, SpaceRole>) {
     },
     async findByHash(hash) {
       return stored.get(hash);
+    },
+    async findByCodeHash(hash) {
+      return byCode.get(hash);
     },
     async requestJoin(_space, userId) {
       requests.push(userId);
@@ -74,7 +81,7 @@ function setup(roles: Record<string, SpaceRole>) {
       members.set(userId, "member");
     },
   } as unknown as SpaceRepository;
-  return { service: createInviteService(invites, spaces), members, requests, log };
+  return { service: createInviteService(invites, spaces, SECRET), members, requests, byCode, log };
 }
 
 const open = { requiresApproval: false, expiresInHours: null };
@@ -111,6 +118,36 @@ describe("createInviteService", () => {
     });
     expect(members.has("guest")).toBe(false);
     expect(requests).toEqual(["guest"]);
+  });
+
+  it("adds someone who types the join code, in any case and with spaces or a dash", async () => {
+    const { service, members } = setup({ owner: "owner" });
+    const { code } = await service.create("owner", SPACE, open);
+    expect(code).toMatch(/^[2-9A-HJKMNP-Z]{10}$/);
+    const typed = `${code.slice(0, 5).toLowerCase()} - ${code.slice(5).toLowerCase()}`;
+    expect(await service.accept("guest", typed)).toMatchObject({ status: "joined" });
+    expect(members.get("guest")).toBe("member");
+  });
+
+  it("queues someone who uses the code of an approval invite", async () => {
+    const { service, members, requests } = setup({ owner: "owner" });
+    const { code } = await service.create("owner", SPACE, { ...open, requiresApproval: true });
+    expect(await service.accept("guest", code)).toEqual({ status: "pending", spaceName: "Studio" });
+    expect(members.has("guest")).toBe(false);
+    expect(requests).toEqual(["guest"]);
+  });
+
+  it("keeps only a keyed hash of the code, which a different secret cannot reproduce", async () => {
+    const { service, byCode } = setup({ owner: "owner" });
+    const { code } = await service.create("owner", SPACE, open);
+    expect([...byCode.keys()].some((key) => key.includes(code))).toBe(false);
+    expect(byCode.has(hashCode(SECRET, code))).toBe(true);
+    expect(byCode.has(hashCode("t".repeat(32), code))).toBe(false);
+  });
+
+  it("refuses a code that was never issued", async () => {
+    const { service } = setup({ owner: "owner" });
+    await expect(service.accept("guest", "AAAAA-AAAAA")).rejects.toMatchObject({ status: 400 });
   });
 
   it("does not demote or duplicate someone who is already in", async () => {

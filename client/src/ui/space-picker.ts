@@ -3,10 +3,12 @@ import {
   DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
   MAX_SPACE_NAME_LENGTH,
+  normalizeInviteCode,
   SPACE_SIZES,
   SPACE_SIZE_INFO,
   SPACE_TEMPLATES,
   SPACE_TEMPLATE_INFO,
+  type InviteResult,
   type SpaceSize,
   type SpaceSummary,
   type SpaceTemplate,
@@ -24,6 +26,11 @@ export interface SpacePickerActions {
   create(name: string, template: SpaceTemplate, size: SpaceSize): Promise<SpaceSummary>;
   /** Walls of a template's map for its thumbnail; undefined when it cannot be read. */
   preview(template: SpaceTemplate, size: SpaceSize): Promise<MapPreview | undefined>;
+  /**
+   * Uses a join code (already normalised). Undefined when the person declined the confirmation;
+   * throws an Error whose message is safe to display when the code is no good.
+   */
+  redeem(code: string): Promise<InviteResult | undefined>;
 }
 
 export interface MapPreview {
@@ -48,7 +55,23 @@ const STYLES = `
   color: var(--v-text); font: inherit; font-weight: 550; cursor: pointer; text-align: left; transition: background 0.15s, border-color 0.15s; }
 .void-spaces li button:hover { background: var(--v-hover); border-color: var(--v-accent); }
 .void-spaces .role { font-size: 12px; font-weight: 500; color: var(--v-muted); text-transform: capitalize; }
+.void-spaces section { display: grid; gap: 12px; }
+.void-spaces section[hidden] { display: none; }
+.void-choices { grid-template-columns: repeat(2, 1fr); }
+.void-choice { display: grid; gap: 6px; align-content: start; justify-items: start; padding: 18px 16px; border-radius: var(--v-radius);
+  border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; text-align: left; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s; }
+.void-choice:hover { background: var(--v-hover); border-color: var(--v-accent); }
+.void-choice:active { transform: scale(0.98); }
+.void-choice strong { font-size: 16px; }
+.void-choice span { color: var(--v-muted); line-height: 1.35; }
+.void-spaces .back { justify-self: start; padding: 4px 10px 4px 6px; border: 0; border-radius: 999px; background: none;
+  color: var(--v-muted); font: inherit; cursor: pointer; }
+.void-spaces .back:hover { background: var(--v-hover); color: var(--v-text); }
+.void-spaces .note { color: var(--v-text); min-height: 1.4em; }
+.void-spaces input[name="code"] { text-transform: uppercase; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
 .void-spaces form { display: flex; gap: 8px; }
+@media (max-width: 420px) { .void-choices { grid-template-columns: 1fr; } }
 .void-sizes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
 .void-sizes button { display: grid; gap: 2px; justify-items: start; padding: 8px; border-radius: var(--v-radius-sm);
   border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
@@ -91,7 +114,7 @@ function drawPreview(canvas: HTMLCanvasElement, map: MapPreview) {
   }
 }
 
-/** Lists your spaces and lets you create one. Resolves with the one that was chosen. */
+/** Asks whether to join or create a space, then resolves with the one that was chosen. */
 export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> {
   applyTheme();
   injectStyle(STYLE_ID, STYLES);
@@ -101,15 +124,33 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
   overlay.innerHTML = `
     <div class="void-spaces__panel v-glass" role="dialog" aria-modal="true" aria-labelledby="void-spaces-title">
       <h1 id="void-spaces-title">Choose a space</h1>
-      <section>
-        <ul data-list></ul>
-        <p data-empty hidden>You are not in a space yet. Create one below.</p>
+      <section class="void-choices" data-view="home">
+        <button class="void-choice" type="button" data-go="join">
+          <strong>Join a space</strong>
+          <span>Open a space you are in, or enter a code to join a new one.</span>
+        </button>
+        <button class="void-choice" type="button" data-go="create">
+          <strong>Create a space</strong>
+          <span>Start your own and invite people to it.</span>
+        </button>
       </section>
-      <section>
-        <h2>Create a space</h2>
+      <section data-view="join" hidden>
+        <button class="back" type="button" data-go="home">← Back</button>
+        <h2>Your spaces</h2>
+        <ul data-list></ul>
+        <p data-empty hidden>You are not in a space yet. Enter a code below to join one.</p>
+        <h2>Join with a code</h2>
+        <form data-code-form novalidate>
+          <input name="code" maxlength="24" placeholder="Code, like K7M2P-9QXA4" aria-label="Join code" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          <button class="primary" type="submit">Join</button>
+        </form>
+        <p class="note" data-note role="status"></p>
+      </section>
+      <section data-view="create" hidden>
+        <button class="back" type="button" data-go="home">← Back</button>
         <div class="void-sizes" data-sizes role="group" aria-label="Size"></div>
         <div class="void-templates" data-templates role="group" aria-label="Style"></div>
-        <form novalidate>
+        <form data-create-form novalidate>
           <input name="name" maxlength="${MAX_SPACE_NAME_LENGTH}" placeholder="Space name" aria-label="Space name" required />
           <button class="primary" type="submit">Create</button>
         </form>
@@ -121,9 +162,14 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
   const list = q<HTMLUListElement>("[data-list]");
   const empty = q<HTMLElement>("[data-empty]");
   const error = q(".error");
-  const form = q<HTMLFormElement>("form");
+  const form = q<HTMLFormElement>("[data-create-form]");
   const name = q<HTMLInputElement>("input[name=name]");
-  const submit = q<HTMLButtonElement>(".primary");
+  const submit = q<HTMLButtonElement>("[data-create-form] .primary");
+  const codeForm = q<HTMLFormElement>("[data-code-form]");
+  const code = q<HTMLInputElement>("input[name=code]");
+  const codeSubmit = q<HTMLButtonElement>("[data-code-form] .primary");
+  const note = q("[data-note]");
+  const title = q("#void-spaces-title");
 
   let template: SpaceTemplate = DEFAULT_TEMPLATE;
   let size: SpaceSize = DEFAULT_SIZE;
@@ -177,7 +223,37 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
     q("[data-templates]").append(button);
   }
   picks.get(template)!.setAttribute("aria-pressed", "true");
-  drawPreviews();
+
+  type View = "home" | "join" | "create";
+  const TITLES: Record<View, string> = {
+    home: "Choose a space",
+    join: "Join a space",
+    create: "Create a space",
+  };
+  let drawn = false;
+  const show = (view: View) => {
+    for (const section of overlay.querySelectorAll<HTMLElement>("[data-view]")) {
+      section.hidden = section.dataset.view !== view;
+    }
+    title.textContent = TITLES[view];
+    error.textContent = "";
+    note.textContent = "";
+    // Reading the maps is only worth it for someone who is about to create a space.
+    if (view === "create" && !drawn) {
+      drawn = true;
+      drawPreviews();
+    }
+    const focus = { home: ".void-choice", join: "input[name=code]", create: "input[name=name]" };
+    overlay.querySelector<HTMLElement>(focus[view])?.focus();
+    current = view;
+  };
+  let current: View = "home";
+  for (const button of overlay.querySelectorAll<HTMLElement>("[data-go]")) {
+    button.addEventListener("click", () => show(button.dataset.go as View));
+  }
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && current !== "home") show("home");
+  });
 
   return new Promise((resolve) => {
     const finish = (space: SpaceSummary) => {
@@ -224,7 +300,35 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
       }
     });
 
+    codeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      error.textContent = "";
+      note.textContent = "";
+      const typed = normalizeInviteCode(code.value);
+      if (!typed) {
+        error.textContent =
+          "That is not a join code. It has 10 letters and digits, like K7M2P-9QXA4.";
+        return;
+      }
+      codeSubmit.disabled = true;
+      try {
+        const result = await actions.redeem(typed);
+        if (result?.status === "joined") {
+          finish(result.space);
+          return;
+        }
+        if (result) {
+          note.textContent = `Asked to join ${result.spaceName}. An admin will let you in.`;
+          code.value = "";
+        }
+      } catch (err) {
+        error.textContent = err instanceof Error ? err.message : "Could not use that code";
+      }
+      codeSubmit.disabled = false;
+    });
+
     document.body.append(overlay);
+    show("home");
     load();
   });
 }

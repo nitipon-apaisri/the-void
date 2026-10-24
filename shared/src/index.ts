@@ -423,7 +423,24 @@ export interface InviteSummary {
 
 export interface CreatedInvite extends InviteSummary {
   token: string;
+  /** The same invite as a short code (see `formatInviteCode`); shown once, like the token. */
+  code: string;
 }
+
+// A join code is typed or read out, so it skips the letters and digits that look alike.
+export const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+export const INVITE_CODE_LENGTH = 10;
+
+/** The code in a form people type (any case, spaces or dashes), or undefined if it cannot be one. */
+export function normalizeInviteCode(input: string): string | undefined {
+  const code = input.toUpperCase().replace(/[\s-]/g, "");
+  if (code.length !== INVITE_CODE_LENGTH) return undefined;
+  return [...code].every((c) => INVITE_CODE_ALPHABET.includes(c)) ? code : undefined;
+}
+
+/** XXXXX-XXXXX, for showing. */
+export const formatInviteCode = (code: string): string =>
+  `${code.slice(0, INVITE_CODE_LENGTH / 2)}-${code.slice(INVITE_CODE_LENGTH / 2)}`;
 
 export interface InvitePreview {
   spaceName: string;

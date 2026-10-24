@@ -16,7 +16,7 @@ interface Options {
   corsOrigins: readonly string[];
 }
 
-/** Using an invite link: look at it, then accept it. The token in the path is the secret. */
+/** Using an invite link or code: look at it, then accept it. The token or code in the path is the secret. */
 export function mountInviteRoutes(app: Application, { auth, invites, corsOrigins }: Options) {
   app.use(INVITE_ROUTES.PREFIX, allowOrigins(corsOrigins));
 
@@ -29,10 +29,21 @@ export function mountInviteRoutes(app: Application, { auth, invites, corsOrigins
     message: { error: "too many attempts, try again later" } satisfies ApiError,
   });
 
-  app.get(`${INVITE_ROUTES.PREFIX}:token`, limiter, (req, res) =>
+  // A join code is far shorter than a token, so failures (not successes) count against a
+  // tighter limit per address.
+  const failures = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 15,
+    skipSuccessfulRequests: true,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "too many wrong codes, try again later" } satisfies ApiError,
+  });
+
+  app.get(`${INVITE_ROUTES.PREFIX}:token`, limiter, failures, (req, res) =>
     respondAs(auth, req, res, (id) => invites.preview(id, String(req.params.token))),
   );
-  app.post(`${INVITE_ROUTES.PREFIX}:token/accept`, limiter, (req, res) =>
+  app.post(`${INVITE_ROUTES.PREFIX}:token/accept`, limiter, failures, (req, res) =>
     respondAs(auth, req, res, (id) => invites.accept(id, String(req.params.token))),
   );
 }

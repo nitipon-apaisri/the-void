@@ -1,10 +1,13 @@
 // lib
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 
 // shared
 import {
   canManageMembers,
+  INVITE_CODE_ALPHABET,
+  INVITE_CODE_LENGTH,
   MAX_ACTIVE_INVITES,
+  normalizeInviteCode,
   type CreatedInvite,
   type InviteOptions,
   type InvitePreview,
@@ -30,12 +33,26 @@ export interface InviteService {
 /** The database keeps this, never the token itself. */
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
+/**
+ * A code has about 49 bits against a token's 256, so a plain hash would not survive a leaked
+ * database: it is keyed with a server secret instead.
+ */
+export const hashCode = (secret: string, code: string) =>
+  createHmac("sha256", secret).update(code).digest("hex");
+
+const newCode = () =>
+  Array.from({ length: INVITE_CODE_LENGTH }, () =>
+    INVITE_CODE_ALPHABET.charAt(randomInt(INVITE_CODE_ALPHABET.length)),
+  ).join("");
+
 // A real token is 43 base64url characters; anything else cannot match, so skip the query.
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 
 export function createInviteService(
   invites: InviteRepository,
   spaces: SpaceRepository,
+  /** Keys the hash of join codes (the server's AUTH_SECRET). */
+  secret: string,
 ): InviteService {
   // Same answer for a space that does not exist and one you may not manage.
   const requireManager = async (userId: string, spaceId: string) => {
@@ -45,9 +62,15 @@ export function createInviteService(
     }
   };
 
-  const find = async (token: string) => {
-    const target = TOKEN.test(token) ? await invites.findByHash(hashToken(token)) : undefined;
-    if (!target) throw new AuthError(400, "this invite link is not valid any more");
+  // A link token or a join code, whichever was typed or opened.
+  const find = async (input: string) => {
+    const code = normalizeInviteCode(input);
+    const target = code
+      ? await invites.findByCodeHash(hashCode(secret, code))
+      : TOKEN.test(input)
+        ? await invites.findByHash(hashToken(input))
+        : undefined;
+    if (!target) throw new AuthError(400, "this invite link or code is not valid any more");
     return target;
   };
 
@@ -58,14 +81,16 @@ export function createInviteService(
         throw new AuthError(409, "too many active links; revoke one first");
       }
       const token = randomBytes(32).toString("base64url");
+      const code = newCode();
       const invite = await invites.create({
         spaceId,
         tokenHash: hashToken(token),
+        codeHash: hashCode(secret, code),
         requiresApproval: options.requiresApproval,
         expiresInHours: options.expiresInHours,
         createdBy: userId,
       });
-      return { ...invite, token };
+      return { ...invite, token, code };
     },
 
     async list(userId, spaceId) {

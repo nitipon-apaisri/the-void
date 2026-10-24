@@ -40,7 +40,7 @@ const auth = createAuthService({
 });
 
 const spaceService = createSpaceService(spaces);
-const inviteService = createInviteService(createInviteRepository(pool), spaces);
+const inviteService = createInviteService(createInviteRepository(pool), spaces, env.authSecret);
 // The rooms listen on this channel, so a removal or role change reaches someone who is online.
 const memberService = createMemberService({
   spaces,

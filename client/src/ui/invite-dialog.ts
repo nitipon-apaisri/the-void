@@ -1,5 +1,10 @@
 // shared
-import type { CreatedInvite, InviteOptions, InviteSummary } from "@void/shared";
+import {
+  formatInviteCode,
+  type CreatedInvite,
+  type InviteOptions,
+  type InviteSummary,
+} from "@void/shared";
 
 // ui
 import { applyTheme } from "./theme";
@@ -58,7 +63,7 @@ const describe = (invite: InviteSummary) => {
   const expiry = invite.expiresAt
     ? `expires ${new Date(invite.expiresAt).toLocaleString()}`
     : "never expires";
-  return `${invite.requiresApproval ? "Needs approval" : "Anyone with the link"} · ${expiry}`;
+  return `${invite.requiresApproval ? "Needs approval" : "Anyone with the link or code"} · ${expiry}`;
 };
 
 /** Make and revoke invite links for a space. Returns a function that closes it. */
@@ -77,20 +82,24 @@ export function openInviteDialog(actions: InviteDialogActions, onClose: () => vo
       </div>
       <section>
         <label class="check"><input type="checkbox" name="approval" /> Ask me before they join</label>
-        <label>Link works for
+        <label>Link and code work for
           <select name="expiry"></select>
         </label>
-        <button type="button" class="primary" data-create>Create link</button>
+        <button type="button" class="primary" data-create>Create link and code</button>
         <div class="void-invite__made" data-made hidden>
           <input type="text" readonly aria-label="Invite link" />
           <button type="button" data-copy>Copy</button>
         </div>
-        <p data-made-note hidden>Copy it now: for safety the link is not shown again.</p>
+        <div class="void-invite__made" data-made-code hidden>
+          <input type="text" readonly aria-label="Join code" />
+          <button type="button" data-copy-code>Copy</button>
+        </div>
+        <p data-made-note hidden>Copy them now: for safety the link and code are not shown again. People can type the code under "Join a space".</p>
       </section>
       <section>
-        <h2>Active links</h2>
+        <h2>Active links and codes</h2>
         <ul data-list></ul>
-        <p data-none hidden>No active links.</p>
+        <p data-none hidden>No active links or codes.</p>
       </section>
       <p class="error" role="alert"></p>
     </div>`;
@@ -103,6 +112,9 @@ export function openInviteDialog(actions: InviteDialogActions, onClose: () => vo
   const madeNote = q<HTMLElement>("[data-made-note]");
   const madeInput = q<HTMLInputElement>("[data-made] input");
   const copyButton = q<HTMLButtonElement>("[data-copy]");
+  const madeCode = q<HTMLElement>("[data-made-code]");
+  const codeInput = q<HTMLInputElement>("[data-made-code] input");
+  const copyCodeButton = q<HTMLButtonElement>("[data-copy-code]");
   const list = q<HTMLUListElement>("[data-list]");
   const none = q<HTMLElement>("[data-none]");
   const error = q(".error");
@@ -153,7 +165,11 @@ export function openInviteDialog(actions: InviteDialogActions, onClose: () => vo
         expiresInHours: EXPIRIES[Number(expiry.value)]!.hours,
       });
       madeInput.value = actions.link(invite.token);
+      codeInput.value = formatInviteCode(invite.code);
+      copyButton.textContent = "Copy";
+      copyCodeButton.textContent = "Copy";
       made.hidden = false;
+      madeCode.hidden = false;
       madeNote.hidden = false;
       madeInput.select();
       await refresh();
@@ -164,15 +180,17 @@ export function openInviteDialog(actions: InviteDialogActions, onClose: () => vo
     }
   });
 
-  copyButton.addEventListener("click", async () => {
+  const copyFrom = (input: HTMLInputElement, button: HTMLButtonElement) => async () => {
     try {
-      await navigator.clipboard.writeText(madeInput.value);
-      copyButton.textContent = "Copied";
+      await navigator.clipboard.writeText(input.value);
+      button.textContent = "Copied";
     } catch {
-      // Clipboard access can be refused; the link is selected so it can be copied by hand.
-      madeInput.select();
+      // Clipboard access can be refused; the text is selected so it can be copied by hand.
+      input.select();
     }
-  });
+  };
+  copyButton.addEventListener("click", copyFrom(madeInput, copyButton));
+  copyCodeButton.addEventListener("click", copyFrom(codeInput, copyCodeButton));
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") close();

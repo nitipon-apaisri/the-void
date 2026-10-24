@@ -13,6 +13,8 @@ export interface InviteTarget {
 export interface NewInvite {
   spaceId: string;
   tokenHash: string;
+  /** Keyed hash of the short code (see the invite service). */
+  codeHash: string;
   requiresApproval: boolean;
   /** Null for a link that never expires. */
   expiresInHours: number | null;
@@ -27,6 +29,8 @@ export interface InviteRepository {
   revoke(spaceId: string, inviteId: string): Promise<boolean>;
   /** Only links that are not revoked, not expired, and whose space still exists. */
   findByHash(tokenHash: string): Promise<InviteTarget | undefined>;
+  /** The same, found by the keyed hash of its short code. */
+  findByCodeHash(codeHash: string): Promise<InviteTarget | undefined>;
   /** Asks to join; asking again while one is pending changes nothing. */
   requestJoin(spaceId: string, userId: string): Promise<void>;
   listRequests(spaceId: string): Promise<JoinRequest[]>;
@@ -52,13 +56,41 @@ const toSummary = (row: InviteRow): InviteSummary => ({
 
 const ACTIVE = "i.deleted_at is null and (i.expires_at is null or i.expires_at > now())";
 
+// `column` is one of two literals below, never input.
+async function findActive(
+  db: Queryable,
+  column: "token_hash" | "code_hash",
+  hash: string,
+): Promise<InviteTarget | undefined> {
+  const { rows } = await db.query<{
+    id: string;
+    space_id: string;
+    name: string;
+    requires_approval: boolean;
+  }>(
+    `select i.id, i.space_id, s.name, i.requires_approval
+     from t_space_invites i join t_spaces s on s.id = i.space_id
+     where i.${column} = $1 and ${ACTIVE} and s.deleted_at is null`,
+    [hash],
+  );
+  const row = rows[0];
+  return (
+    row && {
+      id: row.id,
+      spaceId: row.space_id,
+      spaceName: row.name,
+      requiresApproval: row.requires_approval,
+    }
+  );
+}
+
 export function createInviteRepository(db: Queryable): InviteRepository {
   return {
     async create(invite) {
       const { rows } = await db.query<InviteRow>(
         `with made as (
-           insert into t_space_invites (space_id, token_hash, requires_approval, expires_at, created_by)
-           values ($1, $2, $3, case when $4::int is null then null else now() + make_interval(hours => $4::int) end, $5)
+           insert into t_space_invites (space_id, token_hash, code_hash, requires_approval, expires_at, created_by)
+           values ($1, $2, $6, $3, case when $4::int is null then null else now() + make_interval(hours => $4::int) end, $5)
            returning id, requires_approval, expires_at, created_at, created_by
          )
          select i.id, i.requires_approval, i.expires_at, i.created_at, u.display_name as created_by_name
@@ -69,6 +101,7 @@ export function createInviteRepository(db: Queryable): InviteRepository {
           invite.requiresApproval,
           invite.expiresInHours,
           invite.createdBy,
+          invite.codeHash,
         ],
       );
       return toSummary(rows[0]!);
@@ -102,28 +135,8 @@ export function createInviteRepository(db: Queryable): InviteRepository {
       return rows.length > 0;
     },
 
-    async findByHash(tokenHash) {
-      const { rows } = await db.query<{
-        id: string;
-        space_id: string;
-        name: string;
-        requires_approval: boolean;
-      }>(
-        `select i.id, i.space_id, s.name, i.requires_approval
-         from t_space_invites i join t_spaces s on s.id = i.space_id
-         where i.token_hash = $1 and ${ACTIVE} and s.deleted_at is null`,
-        [tokenHash],
-      );
-      const row = rows[0];
-      return (
-        row && {
-          id: row.id,
-          spaceId: row.space_id,
-          spaceName: row.name,
-          requiresApproval: row.requires_approval,
-        }
-      );
-    },
+    findByHash: (tokenHash) => findActive(db, "token_hash", tokenHash),
+    findByCodeHash: (codeHash) => findActive(db, "code_hash", codeHash),
 
     async requestJoin(spaceId, userId) {
       await db.query(

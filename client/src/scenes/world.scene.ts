@@ -28,6 +28,7 @@ import {
   type Look,
   type MapTable,
   type Position,
+  type InviteResult,
   type SpaceMember,
   type SpaceRole,
   type SpaceSummary,
@@ -106,6 +107,9 @@ const mapUrls = import.meta.glob("../assets/maps/*.tmj", {
   query: "?url",
   import: "default",
 }) as Record<string, string>;
+
+const pendingMessage = (spaceName: string) =>
+  `Asked to join ${spaceName}. An admin will let you in.`;
 
 export class WorldScene extends Phaser.Scene {
   private connection?: VoidConnection;
@@ -370,6 +374,7 @@ export class WorldScene extends Phaser.Scene {
       load,
       create: (name, template, size) => this.spaces.create(token(), { name, template, size }),
       preview: (template, size) => this.previewMap(template, size),
+      redeem: (code) => this.redeemInvite(session, code),
     });
     this.setGameInput(true);
     saveLastSpace(session.user.id, space.id);
@@ -408,26 +413,9 @@ export class WorldScene extends Phaser.Scene {
     const invite = this.inviteToken;
     if (!invite) return undefined;
     try {
-      const preview = await this.spaces.previewInvite(session.token, invite);
-      if (!preview.alreadyMember) {
-        this.setGameInput(false);
-        const yes = await confirmDialog({
-          title: `Join ${preview.spaceName}?`,
-          body: preview.requiresApproval
-            ? "An admin will have to let you in after you ask."
-            : "You will be added to this space right away.",
-          confirmLabel: preview.requiresApproval ? "Ask to join" : "Join",
-        });
-        this.setGameInput(true);
-        if (!yes) return undefined;
-      }
-      const result = await this.spaces.acceptInvite(session.token, invite);
-      if (result.status === "joined") return result.space;
-      this.toast.show(
-        `Asked to join ${result.spaceName}. An admin will let you in.`,
-        "success",
-        6000,
-      );
+      const result = await this.redeemInvite(session, invite);
+      if (result?.status === "joined") return result.space;
+      if (result) this.toast.show(pendingMessage(result.spaceName), "success", 6000);
     } catch (err) {
       this.toast.show(
         err instanceof Error ? err.message : "Could not use that link",
@@ -436,6 +424,28 @@ export class WorldScene extends Phaser.Scene {
       );
     }
     return undefined;
+  }
+
+  // A link or a typed code: the same steps. Undefined when the person says no; throws a message
+  // that is safe to show when the invite is no good.
+  private async redeemInvite(
+    session: AuthSession,
+    invite: string,
+  ): Promise<InviteResult | undefined> {
+    const preview = await this.spaces.previewInvite(session.token, invite);
+    if (!preview.alreadyMember) {
+      this.setGameInput(false);
+      const yes = await confirmDialog({
+        title: `Join ${preview.spaceName}?`,
+        body: preview.requiresApproval
+          ? "An admin will have to let you in after you ask."
+          : "You will be added to this space right away.",
+        confirmLabel: preview.requiresApproval ? "Ask to join" : "Join",
+      });
+      this.setGameInput(true);
+      if (!yes) return undefined;
+    }
+    return this.spaces.acceptInvite(session.token, invite);
   }
 
   private showInvite() {
