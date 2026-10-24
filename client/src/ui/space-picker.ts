@@ -41,11 +41,44 @@ export interface MapPreview {
 
 const STYLE_ID = "void-space-picker-style";
 const STYLES = `
-.void-spaces { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
+.void-spaces { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; overflow: hidden;
   background: radial-gradient(900px 520px at 50% 0%, rgb(139 147 255 / 0.22), transparent 70%), var(--v-bg);
-  font: 14px/1.4 var(--v-font); color: var(--v-text); }
-.void-spaces__panel { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
-  padding: 28px; border-radius: 22px; display: grid; gap: 18px; }
+  font: 14px/1.4 var(--v-font); color: var(--v-text); animation: v-fade 0.5s ease-out; }
+.void-spaces__panel { position: relative; z-index: 1; width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+  overflow-y: auto; padding: 28px; border-radius: 22px; display: grid; gap: 18px; }
+
+/* Background: a faint dot grid that fades towards the edges, three orbits with a small body on
+   each, and a few stars. Everything is decoration, so it stays quiet and sits under the panel. */
+.void-sky { position: absolute; inset: 0; pointer-events: none; --ink: color-mix(in srgb, var(--v-text) 14%, transparent); }
+.void-sky::before { content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--v-text) 24%, transparent) 1px, transparent 1.6px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(ellipse 65% 55% at 50% 45%, #000 15%, transparent 78%);
+  mask-image: radial-gradient(ellipse 65% 55% at 50% 45%, #000 15%, transparent 78%);
+  animation: v-fade 1.4s ease-out; }
+.void-sky i { position: absolute; left: 50%; top: 45%; translate: -50% -50%; border-radius: 50%;
+  border: 1px solid var(--ink); animation: v-orbit var(--t) linear infinite, v-fade 1.2s ease-out; }
+.void-sky i::after { content: ""; position: absolute; top: -3px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px;
+  border-radius: 50%; background: var(--v-accent); box-shadow: 0 0 10px 1px var(--v-accent); }
+.void-sky i:nth-child(1) { width: 520px; height: 520px; --t: 60s; }
+.void-sky i:nth-child(2) { width: 820px; height: 820px; --t: 110s; animation-direction: reverse, normal; }
+.void-sky i:nth-child(2)::after { width: 4px; height: 4px; margin-left: -2px; opacity: 0.7; }
+.void-sky i:nth-child(3) { width: 1160px; height: 1160px; --t: 170s; }
+.void-sky i:nth-child(3)::after { width: 3px; height: 3px; margin-left: -1.5px; opacity: 0.5; }
+.void-sky b { position: absolute; left: 0; top: 0; width: 2px; height: 2px; border-radius: 50%;
+  background: color-mix(in srgb, var(--v-text) 70%, transparent); animation: v-twinkle 5s ease-in-out infinite;
+  box-shadow: 8vw 14vh 0 0 var(--ink), 17vw 72vh 0 0 var(--ink), 26vw 30vh 0 0 var(--ink), 34vw 88vh 0 0 var(--ink),
+    63vw 9vh 0 0 var(--ink), 71vw 81vh 0 0 var(--ink), 82vw 24vh 0 0 var(--ink), 91vw 60vh 0 0 var(--ink),
+    12vw 52vh 0 0 var(--ink), 47vw 6vh 0 0 var(--ink), 55vw 93vh 0 0 var(--ink), 96vw 90vh 0 0 var(--ink); }
+@keyframes v-orbit { to { rotate: 360deg; } }
+@keyframes v-twinkle { 50% { opacity: 0.35; } }
+@keyframes v-rise { from { opacity: 0; translate: 0 12px; } }
+/* Each view's pieces come in one after another; a view that was hidden starts over when shown. */
+.void-spaces section:not([hidden]) > * { animation: v-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; animation-delay: calc(var(--i, 0) * 70ms + 60ms); }
+.void-spaces h1 { animation: v-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .void-spaces, .void-spaces *, .void-spaces *::before, .void-spaces *::after { animation: none !important; transition: none !important; }
+}
 .void-spaces h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
 .void-spaces h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--v-muted); }
 .void-spaces p { margin: 0; color: var(--v-muted); }
@@ -60,8 +93,8 @@ const STYLES = `
 .void-choices { grid-template-columns: repeat(2, 1fr); }
 .void-choice { display: grid; gap: 6px; align-content: start; justify-items: start; padding: 18px 16px; border-radius: var(--v-radius);
   border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; text-align: left; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s; }
-.void-choice:hover { background: var(--v-hover); border-color: var(--v-accent); }
+  transition: background 0.15s, border-color 0.15s, translate 0.15s, transform 0.15s; }
+.void-choice:hover { background: var(--v-hover); border-color: var(--v-accent); translate: 0 -2px; }
 .void-choice:active { transform: scale(0.98); }
 .void-choice strong { font-size: 16px; }
 .void-choice span { color: var(--v-muted); line-height: 1.35; }
@@ -122,16 +155,17 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
   const overlay = document.createElement("div");
   overlay.className = "void-spaces";
   overlay.innerHTML = `
+    <div class="void-sky" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
     <div class="void-spaces__panel v-glass" role="dialog" aria-modal="true" aria-labelledby="void-spaces-title">
-      <h1 id="void-spaces-title">Choose a space</h1>
+      <h1 id="void-spaces-title">Do you want to…</h1>
       <section class="void-choices" data-view="home">
         <button class="void-choice" type="button" data-go="join">
           <strong>Join a space</strong>
-          <span>Open a space you are in, or enter a code to join a new one.</span>
+          <span>Open one you are in, or enter a code to join a new one.</span>
         </button>
         <button class="void-choice" type="button" data-go="create">
           <strong>Create a space</strong>
-          <span>Start your own and invite people to it.</span>
+          <span>Start your own and invite people in.</span>
         </button>
       </section>
       <section data-view="join" hidden>
@@ -226,7 +260,7 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
 
   type View = "home" | "join" | "create";
   const TITLES: Record<View, string> = {
-    home: "Choose a space",
+    home: "Do you want to…",
     join: "Join a space",
     create: "Create a space",
   };
@@ -236,6 +270,18 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
       section.hidden = section.dataset.view !== view;
     }
     title.textContent = TITLES[view];
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      title.animate(
+        [
+          { opacity: 0, translate: "0 6px" },
+          { opacity: 1, translate: "0 0" },
+        ],
+        { duration: 240, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+      );
+    }
+    overlay
+      .querySelectorAll<HTMLElement>(`[data-view="${view}"] > *`)
+      .forEach((child, i) => child.style.setProperty("--i", String(i)));
     error.textContent = "";
     note.textContent = "";
     // Reading the maps is only worth it for someone who is about to create a space.
