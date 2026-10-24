@@ -1,15 +1,17 @@
 // Copies the sheets we use out of the licensed LimeZu "Modern Interiors" pack into
-// client/src/assets/game/ and writes the office map (Tiled .tmj) that uses them.
+// client/src/assets/game/ and writes the maps (Tiled .tmj) that use them: one per space template
+// and size.
 //
 // The pack is not redistributable, so neither the pack nor game/ is committed: everyone who
 // builds the game needs their own copy (https://limezu.itch.io/moderninteriors). Put it at
 // client/src/assets/art/limezu/moderninteriors-win, or pass another folder:
 //   npm run assets:import -- /path/to/moderninteriors-win
 //
-// The map layout is ours and is committed (maps/office.tmj); only pictures come from the pack.
+// The map layouts are ours and are committed (maps/<template>.tmj for medium, maps/<template>-<size>.tmj
+// for the others); only pictures come from the pack.
 // The map is written only when it is missing or you pass --map, so edits made in Tiled survive
 // a re-import. Tilesets keep their names (floors, walls, generic, conference).
-// Keep COLS/ROWS/TILE in sync with shared/src/index.ts.
+// Keep TILE and SIZES in sync with shared/src/index.ts (SPACE_SIZE_DIMENSIONS, mapName).
 import {
   copyFileSync,
   existsSync,
@@ -22,14 +24,24 @@ import {
 import path from "node:path";
 
 const TILE = 32;
-const COLS = 90;
-const ROWS = 67;
+const SIZES = {
+  small: { cols: 60, rows: 45 },
+  medium: { cols: 90, rows: 67 },
+  large: { cols: 130, rows: 96 },
+};
+// Medium keeps the plain template name, so the maps that existed before sizes did stay valid.
+const mapName = (template, size) => (size === "medium" ? template : `${template}-${size}`);
 
 const root = new URL("../client/src/assets/", import.meta.url);
 const args = process.argv.slice(2);
 const writeMap = args.includes("--map");
+// --out <dir> writes the maps there instead, to compare a layout change with what is committed.
+const outFlag = args.indexOf("--out");
+const mapsDir =
+  outFlag === -1 ? new URL("maps/", root) : new URL(`${path.resolve(args[outFlag + 1])}/`, "file:");
+const positional = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--out");
 const pack = path.resolve(
-  args.find((a) => !a.startsWith("--")) ?? new URL("art/limezu/moderninteriors-win", root).pathname,
+  positional[0] ?? new URL("art/limezu/moderninteriors-win", root).pathname,
 );
 const outDir = new URL("game/", root).pathname;
 
@@ -127,181 +139,258 @@ for (const [part, list] of Object.entries(manifest)) {
   }
 }
 
-const officePlan = ({ carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
-  // ---- the floor plan ----
-  // A 3 x 3 grid of rooms (about 30 x 20 tiles each) with doorways between them:
-  //   open office | open office | meeting rooms
-  //   lounge      | plaza       | open office
-  //   cafeteria   | event lounge| open office
-  // Walls sit on x = 30 and 60 and on rows 22-23 and 44-45; the gaps in them are the doors.
+// Plans below get the map size and the drawing helpers. Positions are in tiles; every plan keeps
+// the middle of the map walkable enough for findSpawn (shared) to find a spot near it.
+const range = (n) => Array.from({ length: n }, (_, i) => i);
 
-  // Floors: grey carpet everywhere, wood in the rooms people gather in.
-  carpet("floors", 1, 5, 1, 2, COLS - 2, ROWS - 3);
-  for (const [x0, y0, x1, y1] of [
-    [61, 2, 88, 21], // meeting rooms
-    [1, 24, 29, 43], // lounge
-    [1, 46, 29, 64], // cafeteria
-    [31, 46, 59, 64], // event lounge
-  ])
-    carpet("floors", 1, 13, x0, y0, x1, y1);
+// Office: a grid of rooms (about 30 x 20 tiles each) with a doorway between neighbours. Medium is
+// the 3 x 3 grid it started as; small is 2 x 2 and large 4 x 4, so a room stays the same size.
+//   desks | desks   | meeting rooms
+//   lounge| plaza   | desks
+//   cafeteria | event lounge | desks
+const OFFICE_KINDS = {
+  small: [
+    ["desks", "meeting"],
+    ["lounge", "desks"],
+  ],
+  medium: [
+    ["desks", "desks", "meeting"],
+    ["lounge", "plaza", "desks"],
+    ["cafeteria", "events", "desks"],
+  ],
+  large: [
+    ["desks", "desks", "meeting", "lounge"],
+    ["lounge", "plaza", "desks", "desks"],
+    ["cafeteria", "events", "desks", "meeting"],
+    ["desks", "desks", "lounge", "plaza"],
+  ],
+};
+// Wood floors in the rooms people gather in, grey carpet elsewhere.
+const WOOD_ROOMS = new Set(["meeting", "lounge", "cafeteria", "events"]);
 
-  // Outer walls, then the dividers. Door gaps: columns 13-16, 43-46, 73-76 across the horizontal
-  // walls, rows 10-12, 32-34, 54-56 through the vertical ones.
-  hwall(0, COLS - 1, 0);
-  hwall(0, COLS - 1, ROWS - 2);
-  vwall(0, 2, ROWS - 3);
-  vwall(COLS - 1, 2, ROWS - 3);
-  for (const y of [22, 44])
-    for (const [x0, x1] of [
-      [0, 12],
-      [17, 42],
-      [47, 72],
-      [77, COLS - 1],
+// What goes in one room, placed from its top left tile (x0, y0); the room is w x h tiles.
+const officeRooms = {
+  desks: ({ desks, x0, y0, w, h }) =>
+    desks(
+      range(Math.floor((w - 2) / 5)).map((k) => x0 + 2 + 5 * k),
+      range(Math.floor((h - 1) / 6)).map((k) => y0 + 2 + 6 * k),
+    ),
+  meeting: ({ meeting, lounge, plant, x0, y0, w, h }) => {
+    meeting(x0 + 3, y0 + 4);
+    meeting(x0 + 15, y0 + 4);
+    lounge(x0 + 3, y0 + 13);
+    for (const [x, y] of [
+      [x0 + 1, y0 + 1],
+      [x0 + w - 2, y0 + 1],
+      [x0 + 1, y0 + h - 2],
+      [x0 + w - 2, y0 + h - 2],
     ])
-      hwall(x0, x1, y);
-  for (const x of [30, 60])
-    for (const [y0, y1] of [
-      [2, 9],
-      [13, 21],
-      [24, 31],
-      [35, 43],
-      [46, 53],
-      [57, 64],
-    ])
-      vwall(x, y0, y1);
+      plant(x, y);
+  },
+  lounge: ({ lounge, x0, y0 }) => {
+    for (const dy of [2, 11]) for (const dx of [1, 17]) lounge(x0 + dx, y0 + dy);
+  },
+  plaza: ({ meeting, plant, x0, y0 }) => {
+    for (const dy of [2, 12]) for (const dx of [2, 22]) meeting(x0 + dx, y0 + dy, false);
+    for (const dy of [3, 15]) for (const dx of [9, 19]) plant(x0 + dx, y0 + dy);
+  },
+  cafeteria: ({ meeting, x0, y0 }) => {
+    for (const dy of [2, 11]) for (const dx of [2, 17]) meeting(x0 + dx, y0 + dy, false);
+  },
+  events: ({ lounge, x0, y0 }) => {
+    for (const dy of [2, 11]) for (const dx of [2, 16]) lounge(x0 + dx, y0 + dy);
+  },
+};
 
-  // Top row
-  desks([3, 8, 13, 18, 23], [4, 10, 16]);
-  desks([33, 38, 43, 48, 53], [4, 10, 16]);
-  meeting(64, 6);
-  meeting(76, 6);
-  lounge(64, 15);
-  for (const [x, y] of [
-    [62, 3],
-    [87, 3],
-    [62, 20],
-    [87, 20],
-  ])
-    plant(x, y);
+const officePlan = (ctx) => {
+  const { size, cols, rows, carpet, hwall, vwall } = ctx;
+  const kinds = OFFICE_KINDS[size];
+  const nr = kinds.length;
+  const nc = kinds[0].length;
+  // Walls sit on these columns and rows (the horizontal ones are two tiles tall).
+  const wallX = (i) => Math.floor((i * cols) / nc);
+  const wallY = (i) => Math.floor((i * rows) / nr);
+  const rooms = kinds.map((row, r) =>
+    row.map((kind, c) => {
+      const x0 = c === 0 ? 1 : wallX(c) + 1;
+      const x1 = c === nc - 1 ? cols - 2 : wallX(c + 1) - 1;
+      const y0 = r === 0 ? 2 : wallY(r) + 2;
+      const y1 = r === nr - 1 ? rows - 3 : wallY(r + 1) - 1;
+      return { kind, x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    }),
+  );
 
-  // Middle row
-  lounge(2, 26);
-  lounge(18, 26);
-  lounge(2, 35);
-  lounge(18, 35);
-  for (const [x, y] of [
-    [33, 26],
-    [53, 26],
-    [33, 36],
-    [53, 36],
-  ])
-    meeting(x, y, false);
-  for (const [x, y] of [
-    [40, 27],
-    [50, 27],
-    [40, 39],
-    [50, 39],
-  ])
-    plant(x, y);
-  desks([63, 68, 73, 78, 83], [26, 32, 38]);
+  carpet("floors", 1, 5, 1, 2, cols - 2, rows - 3);
+  for (const room of rooms.flat())
+    if (WOOD_ROOMS.has(room.kind)) carpet("floors", 1, 13, room.x0, room.y0, room.x1, room.y1);
 
-  // Bottom row
-  for (const [x, y] of [
-    [3, 48],
-    [18, 48],
-    [3, 57],
-    [18, 57],
-  ])
-    meeting(x, y, false);
-  for (const [x, y] of [
-    [33, 48],
-    [47, 48],
-    [33, 57],
-    [47, 57],
-  ])
-    lounge(x, y);
-  desks([63, 68, 73, 78, 83], [48, 54, 60]);
+  hwall(0, cols - 1, 0);
+  hwall(0, cols - 1, rows - 2);
+  vwall(0, 2, rows - 3);
+  vwall(cols - 1, 2, rows - 3);
+  // Doorways: 4 wide through the horizontal walls and 3 tall through the vertical ones, each in
+  // the middle of the room it opens into.
+  for (const r of range(nr - 1)) {
+    let start = 0;
+    for (const room of rooms[0]) {
+      const middle = Math.ceil((room.x0 + room.x1) / 2);
+      hwall(start, middle - 3, wallY(r + 1));
+      start = middle + 2;
+    }
+    hwall(start, cols - 1, wallY(r + 1));
+  }
+  for (const c of range(nc - 1)) {
+    for (const [first] of rooms) {
+      const middle = Math.floor((first.y0 + first.y1) / 2);
+      vwall(wallX(c + 1), first.y0, middle - 2);
+      vwall(wallX(c + 1), middle + 2, first.y1);
+    }
+  }
+
+  for (const room of rooms.flat()) officeRooms[room.kind]({ ...ctx, ...room });
 };
 
 // Open plan: one big light room with tidy desk blocks, glass-free meeting rooms and a lounge.
-const openPlan = ({ W, carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
+// How much of each fits depends on the size: meeting rooms across the top right, desk rows,
+// then lounges and meeting tables below, in columns and rows.
+const OPEN_PLAN = {
+  small: { meetings: 1, deskRows: 2, loungeCols: 1, loungeRows: 2, tableCols: 2 },
+  medium: { meetings: 2, deskRows: 4, loungeCols: 2, loungeRows: 2, tableCols: 2 },
+  large: { meetings: 3, deskRows: 6, loungeCols: 3, loungeRows: 4, tableCols: 3 },
+};
+const openPlan = ({ size, cols, rows, W, carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
+  const cfg = OPEN_PLAN[size];
   W.row = 2;
-  carpet("floors", 5, 31, 1, 2, COLS - 2, ROWS - 3);
-  carpet("floors", 5, 3, 62, 2, 88, 20);
-  carpet("floors", 5, 3, 1, 34, 59, 64);
-  hwall(0, COLS - 1, 0);
-  hwall(0, COLS - 1, ROWS - 2);
-  vwall(0, 2, ROWS - 3);
-  vwall(COLS - 1, 2, ROWS - 3);
-  // Meeting rooms in the top right corner, one doorway into the open floor.
-  vwall(61, 2, 9);
-  vwall(61, 13, 20);
-  hwall(61, 72, 21);
-  hwall(77, COLS - 1, 21);
-  meeting(64, 8);
-  meeting(76, 8);
-  desks([4, 10, 16, 22, 28], [5, 12, 19, 26]);
-  desks([40, 46, 52], [5, 12, 19, 26]);
-  desks([64, 70, 76, 82], [30, 37, 44]);
-  lounge(3, 38);
-  lounge(16, 38);
-  lounge(3, 48);
-  lounge(16, 48);
-  meeting(40, 40, false);
-  meeting(52, 40, false);
-  meeting(40, 52, false);
-  meeting(52, 52, false);
+  // The meeting rooms fill a block on the right from the top wall down to row 21.
+  const zone = cols - (12 * cfg.meetings + 5);
+  const lowerY = 5 + 7 * cfg.deskRows + 1;
+  carpet("floors", 5, 31, 1, 2, cols - 2, rows - 3);
+  carpet("floors", 5, 3, zone + 1, 2, cols - 2, 20);
+  carpet("floors", 5, 3, 1, lowerY, zone - 2, rows - 3);
+  hwall(0, cols - 1, 0);
+  hwall(0, cols - 1, rows - 2);
+  vwall(0, 2, rows - 3);
+  vwall(cols - 1, 2, rows - 3);
+  // One doorway into the open floor between each pair of rooms (under the room when there is one).
+  vwall(zone, 2, 9);
+  vwall(zone, 13, 20);
+  let start = zone;
+  for (const gap of cfg.meetings === 1 ? [4] : range(cfg.meetings - 1).map((j) => 12 * (j + 1))) {
+    hwall(start, zone + gap - 1, 21);
+    start = zone + gap + 4;
+  }
+  hwall(start, cols - 1, 21);
+  for (const k of range(cfg.meetings)) meeting(zone + 3 + 12 * k, 8);
+
+  // Desk blocks, with an aisle through the middle of the left side.
+  const ys = range(cfg.deskRows).map((k) => 5 + 7 * k);
+  const xs = [];
+  for (let x = 4; x <= zone - 7; x += 6) xs.push(x);
+  const middle = Math.round(zone * 0.56);
+  const aisle = xs.reduce((best, x) => (Math.abs(x - middle) < Math.abs(best - middle) ? x : best));
+  desks(
+    xs.filter((x) => x < aisle),
+    ys,
+  );
+  desks(
+    xs.filter((x) => x > aisle),
+    ys,
+  );
+  const rightXs = [];
+  for (let x = zone + 3; x <= cols - 8; x += 6) rightXs.push(x);
+  desks(
+    rightXs,
+    range(cfg.deskRows - 1).map((k) => 30 + 7 * k),
+  );
+
+  for (const j of range(cfg.loungeRows))
+    for (const k of range(cfg.loungeCols)) lounge(3 + 13 * k, lowerY + 4 + 10 * j);
+  const tableRows = Math.floor((rows - 3 - (lowerY + 6) - 6) / 12) + 1;
+  for (const j of range(tableRows))
+    for (const k of range(cfg.tableCols))
+      meeting(zone - 9 - 12 * (cfg.tableCols - 1 - k), lowerY + 6 + 12 * j, false);
   for (const [x, y] of [
     [2, 3],
-    [37, 3],
-    [59, 3],
-    [37, 33],
-    [59, 33],
-    [2, 62],
-    [37, 62],
-    [59, 62],
-    [87, 62],
-    [87, 26],
+    [aisle + 3, 3],
+    [zone - 2, 3],
+    [aisle + 3, lowerY - 1],
+    [zone - 2, lowerY - 1],
+    [2, rows - 5],
+    [aisle + 3, rows - 5],
+    [zone - 2, rows - 5],
+    [cols - 3, rows - 5],
+    [cols - 3, 26],
   ])
     plant(x, y);
 };
 
 // Empty: a bare hall with nothing in it, for owners who want to decorate everything themselves.
-const emptyPlan = ({ W, carpet, hwall, vwall }) => {
+const emptyPlan = ({ cols, rows, W, carpet, hwall, vwall }) => {
   W.row = 2;
-  carpet("floors", 5, 31, 1, 2, COLS - 2, ROWS - 3);
-  hwall(0, COLS - 1, 0);
-  hwall(0, COLS - 1, ROWS - 2);
-  vwall(0, 2, ROWS - 3);
-  vwall(COLS - 1, 2, ROWS - 3);
+  carpet("floors", 5, 31, 1, 2, cols - 2, rows - 3);
+  hwall(0, cols - 1, 0);
+  hwall(0, cols - 1, rows - 2);
+  vwall(0, 2, rows - 3);
+  vwall(cols - 1, 2, rows - 3);
 };
 
-// Studio: a small team's office, a 50 x 39 room in the middle of the map. The rest is solid.
-const studioPlan = ({ W, carpet, hwall, vwall, desks, meeting, lounge, plant, fillOutside }) => {
+// Studio: a small team's office in the middle of the map (50 x 39 tiles at medium). The rest is
+// solid. The room grows with the map: more desks and lounges, never a different shape.
+const STUDIO_ROOMS = { small: [40, 31], medium: [50, 39], large: [70, 53] };
+const studioPlan = ({
+  size,
+  cols,
+  rows,
+  W,
+  carpet,
+  hwall,
+  vwall,
+  desks,
+  meeting,
+  lounge,
+  plant,
+  fillOutside,
+}) => {
+  const [rw, rh] = STUDIO_ROOMS[size];
+  const rx = Math.floor((cols - rw) / 2);
+  const ry = Math.floor((rows - rh) / 2);
   W.row = 2;
-  carpet("floors", 5, 3, 21, 16, 68, 50);
-  hwall(20, 69, 14);
-  hwall(20, 69, 51);
-  vwall(20, 16, 50);
-  vwall(69, 16, 50);
-  fillOutside(20, 14, 69, 52);
-  desks([24, 30, 36], [18, 25]);
-  desks([52, 58, 64], [18, 25]);
-  meeting(52, 38);
-  lounge(24, 38);
-  lounge(36, 44);
+  carpet("floors", 5, 3, rx + 1, ry + 2, rx + rw - 2, ry + rh - 3);
+  hwall(rx, rx + rw - 1, ry);
+  hwall(rx, rx + rw - 1, ry + rh - 2);
+  vwall(rx, ry + 2, ry + rh - 3);
+  vwall(rx + rw - 1, ry + 2, ry + rh - 3);
+  fillOutside(rx, ry, rx + rw - 1, ry + rh - 1);
+  // Desk blocks either side of a gap down the middle, then lounges and a meeting table below.
+  const perSide = Math.floor((rw - 14) / 12);
+  const deskRows = Math.min(4, Math.floor((rh - 23) / 7));
+  const ys = range(deskRows).map((k) => ry + 4 + 7 * k);
+  desks(
+    range(perSide).map((k) => rx + 4 + 6 * k),
+    ys,
+  );
+  desks(
+    range(perSide).map((k) => rx + rw - 6 - 6 * (perSide - 1 - k)),
+    ys,
+  );
+  const lower = ry + 10 + 7 * deskRows;
+  meeting(rx + rw - 18, lower);
+  lounge(rx + 4, lower);
+  if (rw >= 50) lounge(rx + 16, lower + 6);
+  const centre = rx + Math.floor(rw / 2) + 2;
   for (const [x, y] of [
-    [22, 16],
-    [67, 16],
-    [22, 49],
-    [67, 49],
-    [47, 17],
-    [47, 49],
+    [rx + 2, ry + 2],
+    [rx + rw - 3, ry + 2],
+    [rx + 2, ry + rh - 4],
+    [rx + rw - 3, ry + rh - 4],
+    [centre, ry + 3],
+    [centre, ry + rh - 4],
   ])
     plant(x, y);
 };
 
-const build = (plan) => {
+const build = (plan, size) => {
+  const { cols: COLS, rows: ROWS } = SIZES[size];
   // ---- map ----
   const blank = () => Array.from({ length: COLS * ROWS }, () => 0);
   const floor = blank();
@@ -409,7 +498,20 @@ const build = (plan) => {
   };
   const desks = (xs, ys) => ys.forEach((y) => xs.forEach((x) => stampDesk(x, y)));
 
-  const api = { W, carpet, hwall, vwall, desks, meeting, lounge, plant, tall };
+  const api = {
+    size,
+    cols: COLS,
+    rows: ROWS,
+    W,
+    carpet,
+    hwall,
+    vwall,
+    desks,
+    meeting,
+    lounge,
+    plant,
+    tall,
+  };
   api.fillOutside = (x0, y0, x1, y1) => {
     for (let y = 0; y < ROWS; y++)
       for (let x = 0; x < COLS; x++)
@@ -498,14 +600,17 @@ const build = (plan) => {
   return map;
 };
 
-// Each template is one map file; "office" keeps its name so existing links keep working.
+// Each template and size is one map file; medium keeps the plain template name.
 const PLANS = { office: officePlan, "open-plan": openPlan, studio: studioPlan, empty: emptyPlan };
 const written = [];
 for (const [id, plan] of Object.entries(PLANS)) {
-  const mapFile = new URL(`maps/${id}.tmj`, root);
-  if (!writeMap && existsSync(mapFile)) continue;
-  writeFileSync(mapFile, JSON.stringify(build(plan)));
-  written.push(id);
+  for (const size of Object.keys(SIZES)) {
+    const name = mapName(id, size);
+    const mapFile = new URL(`${name}.tmj`, mapsDir);
+    if (!writeMap && existsSync(mapFile)) continue;
+    writeFileSync(mapFile, JSON.stringify(build(plan, size)));
+    written.push(name);
+  }
 }
 console.log(
   `copied ${Object.keys(SHEETS).length} sheets and the character parts; ` +

@@ -13,11 +13,11 @@ function fakeSpaces(owned = 0, members = new Set<string>()): SpaceRepository {
     { userId: "u1", name: "Ada", look: undefined as never, role: "owner" },
   ];
   return {
-    async create(name, _ownerId, template) {
-      return { id: SPACE_ID, name, role: "owner", template };
+    async create(name, _ownerId, template, size) {
+      return { id: SPACE_ID, name, role: "owner", template, size };
     },
-    async findTemplate() {
-      return "office";
+    async findLayout() {
+      return { template: "office", size: "medium" };
     },
     async setTemplate() {},
     async countOwned() {
@@ -55,6 +55,14 @@ describe("parseSpace", () => {
     expect(parseSpace({ name: "A", template: "castle" }).ok).toBe(false);
   });
 
+  it("accepts a known size and rejects an unknown one", () => {
+    expect(parseSpace({ name: "A", size: "large" })).toEqual({
+      ok: true,
+      value: { name: "A", size: "large" },
+    });
+    expect(parseSpace({ name: "A", size: "huge" }).ok).toBe(false);
+  });
+
   it.each([
     null,
     {},
@@ -78,7 +86,15 @@ describe("isUuid", () => {
 describe("createSpaceService", () => {
   it("creates a space for its owner", async () => {
     const space = await createSpaceService(fakeSpaces()).create("u1", { name: "Studio" });
-    expect(space).toMatchObject({ name: "Studio", role: "owner" });
+    expect(space).toMatchObject({ name: "Studio", role: "owner", size: "medium" });
+  });
+
+  it("keeps the size it was asked for", async () => {
+    const space = await createSpaceService(fakeSpaces()).create("u1", {
+      name: "Studio",
+      size: "small",
+    });
+    expect(space.size).toBe("small");
   });
 
   it("stops at the limit of owned spaces", async () => {

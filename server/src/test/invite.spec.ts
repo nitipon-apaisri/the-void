@@ -60,7 +60,15 @@ function setup(roles: Record<string, SpaceRole>) {
     },
     async findSummary(_space: string, userId: string) {
       const role = members.get(userId);
-      return role && { id: SPACE, name: "Studio", template: "office" as const, role };
+      return (
+        role && {
+          id: SPACE,
+          name: "Studio",
+          template: "office" as const,
+          size: "medium" as const,
+          role,
+        }
+      );
     },
     async addMember(_space: string, userId: string) {
       members.set(userId, "member");

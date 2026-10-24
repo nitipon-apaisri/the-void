@@ -1,17 +1,16 @@
 // shared
 import {
   collidesCircle,
+  findSpawn,
   PLAYER_RADIUS,
-  SPAWN,
-  WORLD_HEIGHT,
-  WORLD_WIDTH,
   type CollisionGrid,
   type Position,
 } from "@void/shared";
 
 /**
  * Where a player appears: where they last stood if that is still open floor, otherwise the
- * default spawn. The saved value came from us, but the map may have changed since.
+ * spawn nearest the middle of the map. The saved value came from us, but the map may have
+ * changed since.
  */
 export function resolveSpawn(
   lastX: number | null,
@@ -24,12 +23,12 @@ export function resolveSpawn(
     Number.isFinite(lastX) &&
     Number.isFinite(lastY) &&
     lastX >= 0 &&
-    lastX <= WORLD_WIDTH &&
+    lastX <= grid.cols * grid.tileSize &&
     lastY >= 0 &&
-    lastY <= WORLD_HEIGHT &&
+    lastY <= grid.rows * grid.tileSize &&
     !collidesCircle(grid, lastX, lastY, PLAYER_RADIUS)
   ) {
     return { x: lastX, y: lastY };
   }
-  return { x: SPAWN.x, y: SPAWN.y };
+  return findSpawn(grid, PLAYER_RADIUS);
 }

@@ -1,9 +1,13 @@
 // shared
 import {
+  DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
   MAX_SPACE_NAME_LENGTH,
+  SPACE_SIZES,
+  SPACE_SIZE_INFO,
   SPACE_TEMPLATES,
   SPACE_TEMPLATE_INFO,
+  type SpaceSize,
   type SpaceSummary,
   type SpaceTemplate,
 } from "@void/shared";
@@ -17,9 +21,9 @@ import { injectStyle } from "../utils/dom";
 export interface SpacePickerActions {
   load(): Promise<SpaceSummary[]>;
   /** Throws an Error whose message is safe to display. */
-  create(name: string, template: SpaceTemplate): Promise<SpaceSummary>;
+  create(name: string, template: SpaceTemplate, size: SpaceSize): Promise<SpaceSummary>;
   /** Walls of a template's map for its thumbnail; undefined when it cannot be read. */
-  preview(template: SpaceTemplate): Promise<MapPreview | undefined>;
+  preview(template: SpaceTemplate, size: SpaceSize): Promise<MapPreview | undefined>;
 }
 
 export interface MapPreview {
@@ -45,6 +49,13 @@ const STYLES = `
 .void-spaces li button:hover { background: var(--v-hover); border-color: var(--v-accent); }
 .void-spaces .role { font-size: 12px; font-weight: 500; color: var(--v-muted); text-transform: capitalize; }
 .void-spaces form { display: flex; gap: 8px; }
+.void-sizes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.void-sizes button { display: grid; gap: 2px; justify-items: start; padding: 8px; border-radius: var(--v-radius-sm);
+  border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.void-sizes button:hover { background: var(--v-hover); }
+.void-sizes button[aria-pressed="true"] { border-color: var(--v-accent); background: rgb(139 147 255 / 0.2); }
+.void-sizes strong { font-size: 13px; }
+.void-sizes span { color: var(--v-muted); line-height: 1.3; }
 .void-templates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 10px 0; }
 .void-templates button { display: grid; gap: 6px; justify-items: start; align-content: start; padding: 8px; border-radius: var(--v-radius-sm);
   border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
@@ -68,6 +79,7 @@ const STYLES = `
 function drawPreview(canvas: HTMLCanvasElement, map: MapPreview) {
   canvas.width = map.cols;
   canvas.height = map.rows;
+  canvas.style.aspectRatio = `${map.cols} / ${map.rows}`;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.fillStyle = "#e9eaf3";
@@ -95,6 +107,7 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
       </section>
       <section>
         <h2>Create a space</h2>
+        <div class="void-sizes" data-sizes role="group" aria-label="Size"></div>
         <div class="void-templates" data-templates role="group" aria-label="Style"></div>
         <form novalidate>
           <input name="name" maxlength="${MAX_SPACE_NAME_LENGTH}" placeholder="Space name" aria-label="Space name" required />
@@ -113,7 +126,38 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
   const submit = q<HTMLButtonElement>(".primary");
 
   let template: SpaceTemplate = DEFAULT_TEMPLATE;
+  let size: SpaceSize = DEFAULT_SIZE;
   const picks = new Map<SpaceTemplate, HTMLButtonElement>();
+  const canvases = new Map<SpaceTemplate, HTMLCanvasElement>();
+  // The thumbnails show the walls of the chosen size. A slow answer for an earlier size must not
+  // overwrite the one for the size picked since.
+  const drawPreviews = () => {
+    const shown = size;
+    for (const [id, canvas] of canvases) {
+      void actions
+        .preview(id, shown)
+        .then((map) => map && shown === size && drawPreview(canvas, map));
+    }
+  };
+  const sizePicks = new Map<SpaceSize, HTMLButtonElement>();
+  for (const id of SPACE_SIZES) {
+    const info = SPACE_SIZE_INFO[id];
+    const button = document.createElement("button");
+    button.type = "button";
+    const title = document.createElement("strong");
+    title.textContent = info.name;
+    const blurb = document.createElement("span");
+    blurb.textContent = info.blurb;
+    button.append(title, blurb);
+    button.addEventListener("click", () => {
+      size = id;
+      for (const [other, b] of sizePicks) b.setAttribute("aria-pressed", String(other === id));
+      drawPreviews();
+    });
+    sizePicks.set(id, button);
+    q("[data-sizes]").append(button);
+  }
+  sizePicks.get(size)!.setAttribute("aria-pressed", "true");
   for (const id of SPACE_TEMPLATES) {
     const info = SPACE_TEMPLATE_INFO[id];
     const button = document.createElement("button");
@@ -129,10 +173,11 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
       for (const [other, b] of picks) b.setAttribute("aria-pressed", String(other === id));
     });
     picks.set(id, button);
+    canvases.set(id, canvas);
     q("[data-templates]").append(button);
-    void actions.preview(id).then((map) => map && drawPreview(canvas, map));
   }
   picks.get(template)!.setAttribute("aria-pressed", "true");
+  drawPreviews();
 
   return new Promise((resolve) => {
     const finish = (space: SpaceSummary) => {
@@ -172,7 +217,7 @@ export function chooseSpace(actions: SpacePickerActions): Promise<SpaceSummary> 
       error.textContent = "";
       submit.disabled = true;
       try {
-        finish(await actions.create(name.value, template));
+        finish(await actions.create(name.value, template, size));
       } catch (err) {
         error.textContent = err instanceof Error ? err.message : "Something went wrong";
         submit.disabled = false;

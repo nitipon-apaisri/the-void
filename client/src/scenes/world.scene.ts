@@ -3,7 +3,8 @@ import Phaser from "phaser";
 
 // shared
 import {
-  SPAWN,
+  findSpawn,
+  mapName,
   TILE_SIZE,
   SEATS_LAYER,
   SIT_RANGE,
@@ -29,6 +30,7 @@ import {
   type Position,
   type SpaceMember,
   type SpaceSummary,
+  type SpaceSize,
   type SpaceTemplate,
 } from "@void/shared";
 
@@ -235,9 +237,9 @@ export class WorldScene extends Phaser.Scene {
     void this.enter();
   }
 
-  // The map depends on the space's template, so it is built once the space is known.
-  private buildWorld(template: SpaceTemplate) {
-    const map = this.make.tilemap({ key: `map:${template}` });
+  // The map depends on the space's template and size, so it is built once the space is known.
+  private buildWorld(template: SpaceTemplate, size: SpaceSize) {
+    const map = this.make.tilemap({ key: `map:${mapName(template, size)}` });
     const tilesets = map.tilesets.map((t) => map.addTilesetImage(t.name, t.name)!);
     for (const name of ["floor", "decor", "objects"]) map.createLayer(name, tilesets);
     // The tops of tall things (a TV, a shelf) hang over players who walk behind them.
@@ -287,7 +289,8 @@ export class WorldScene extends Phaser.Scene {
     this.setGameInput(true);
     const space = await this.pickSpace(session);
     this.space = space;
-    this.buildWorld(space.template);
+    this.buildWorld(space.template, space.size);
+    const spawn = findSpawn(this.grid, PLAYER_RADIUS);
     this.people = createPeoplePanel({
       onGoTo: (userId) => this.goToUser(userId),
       onTyping: (on) => this.setGameInput(!on),
@@ -305,7 +308,7 @@ export class WorldScene extends Phaser.Scene {
     this.people.setOnline(new Set([session.user.id]));
     void this.loadMembers();
 
-    this.me = this.spawnPlayer(SPAWN.x, SPAWN.y, session.user.name, session.user.look);
+    this.me = this.spawnPlayer(spawn.x, spawn.y, session.user.name, session.user.look);
     // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
     this.followMe();
     void this.connect();
@@ -359,8 +362,8 @@ export class WorldScene extends Phaser.Scene {
     this.setGameInput(false);
     const space = await chooseSpace({
       load,
-      create: (name, template) => this.spaces.create(token(), { name, template }),
-      preview: (template) => this.previewMap(template),
+      create: (name, template, size) => this.spaces.create(token(), { name, template, size }),
+      preview: (template, size) => this.previewMap(template, size),
     });
     this.setGameInput(true);
     saveLastSpace(session.user.id, space.id);
@@ -369,8 +372,12 @@ export class WorldScene extends Phaser.Scene {
 
   // The thumbnail in the space picker: the walls of a template's map, read before the scene
   // has loaded it into Phaser.
-  private async previewMap(template: SpaceTemplate): Promise<MapPreview | undefined> {
-    const url = Object.entries(mapUrls).find(([file]) => file.endsWith(`/${template}.tmj`))?.[1];
+  private async previewMap(
+    template: SpaceTemplate,
+    size: SpaceSize,
+  ): Promise<MapPreview | undefined> {
+    const file = `/${mapName(template, size)}.tmj`;
+    const url = Object.entries(mapUrls).find(([path]) => path.endsWith(file))?.[1];
     if (!url) return undefined;
     try {
       const map = (await (await fetch(url)).json()) as {

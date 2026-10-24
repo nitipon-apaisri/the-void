@@ -1,33 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { createGrid, PLAYER_SPEED, SPAWN, WORLD_HEIGHT, WORLD_WIDTH } from "@void/shared";
+import { createGrid, findSpawn, PLAYER_RADIUS, PLAYER_SPEED } from "@void/shared";
 
 import { resolveSpawn } from "../handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "../handlers/move.handler.js";
 
 // Open floor with one wall tile at column 5, row 5.
 const grid = createGrid(20, 20, 32, (col, row) => col === 5 && row === 5);
+const WORLD_WIDTH = 20 * 32;
+const WORLD_HEIGHT = 20 * 32;
+const SPAWN = findSpawn(grid, PLAYER_RADIUS);
 
 describe("parseMove", () => {
   it("accepts finite in-range coordinates", () => {
-    expect(parseMove({ x: 10, y: 20 })).toEqual({ x: 10, y: 20 });
+    expect(parseMove({ x: 10, y: 20 }, grid)).toEqual({ x: 10, y: 20 });
   });
 
   it("drops extra fields", () => {
-    expect(parseMove({ x: 1, y: 2, admin: true })).toEqual({ x: 1, y: 2 });
+    expect(parseMove({ x: 1, y: 2, admin: true }, grid)).toEqual({ x: 1, y: 2 });
   });
 
   it.each([null, undefined, 5, "x", [], {}, { x: 1 }, { x: "1", y: 2 }, { x: NaN, y: 0 }])(
     "rejects %j",
     (payload) => {
-      expect(parseMove(payload)).toBeNull();
+      expect(parseMove(payload, grid)).toBeNull();
     },
   );
 
   it("rejects infinity and positions outside the world", () => {
-    expect(parseMove({ x: Infinity, y: 0 })).toBeNull();
-    expect(parseMove({ x: -1, y: 0 })).toBeNull();
-    expect(parseMove({ x: WORLD_WIDTH + 1, y: 0 })).toBeNull();
-    expect(parseMove({ x: 0, y: WORLD_HEIGHT + 1 })).toBeNull();
+    expect(parseMove({ x: Infinity, y: 0 }, grid)).toBeNull();
+    expect(parseMove({ x: -1, y: 0 }, grid)).toBeNull();
+    expect(parseMove({ x: WORLD_WIDTH + 1, y: 0 }, grid)).toBeNull();
+    expect(parseMove({ x: 0, y: WORLD_HEIGHT + 1 }, grid)).toBeNull();
   });
 });
 

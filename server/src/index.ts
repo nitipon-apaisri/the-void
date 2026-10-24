@@ -5,7 +5,7 @@ import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 
 // shared
-import { ROOM_NAME, SPACE_TEMPLATES } from "@void/shared";
+import { mapName, ROOM_NAME, SPACE_SIZES, SPACE_TEMPLATES } from "@void/shared";
 
 import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
@@ -38,16 +38,20 @@ const auth = createAuthService({
 const spaces = createSpaceRepository(pool);
 const spaceService = createSpaceService(spaces);
 const inviteService = createInviteService(createInviteRepository(pool), spaces);
-// Read once: a space picks one of these by its template, and a bad file should stop the start.
-const maps = Object.fromEntries(
-  SPACE_TEMPLATES.map((template) => {
-    const file = path.join(env.mapsDir, `${template}.tmj`);
-    return [
-      template,
-      { grid: loadCollisionGrid(file), tables: loadTables(file), seats: loadSeats(file) },
-    ];
-  }),
-) as SpaceMaps;
+// Read once: a space picks one of these by its template and size, and a bad file should stop
+// the start.
+const maps: SpaceMaps = Object.fromEntries(
+  SPACE_TEMPLATES.flatMap((template) =>
+    SPACE_SIZES.map((size) => {
+      const name = mapName(template, size);
+      const file = path.join(env.mapsDir, `${name}.tmj`);
+      return [
+        name,
+        { grid: loadCollisionGrid(file, size), tables: loadTables(file), seats: loadSeats(file) },
+      ];
+    }),
+  ),
+);
 const claims = createTableRepository(pool);
 const furniture = createFurnitureRepository(pool);
 

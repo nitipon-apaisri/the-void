@@ -1,6 +1,7 @@
 // shared
 import {
   MAX_OWNED_SPACES,
+  DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
   type CreateSpacePayload,
   type SpaceMember,
@@ -20,11 +21,11 @@ export interface SpaceService {
 
 export function createSpaceService(spaces: SpaceRepository): SpaceService {
   return {
-    async create(userId, { name, template }) {
+    async create(userId, { name, template, size }) {
       if ((await spaces.countOwned(userId)) >= MAX_OWNED_SPACES) {
         throw new AuthError(409, `you can own at most ${MAX_OWNED_SPACES} spaces`);
       }
-      return spaces.create(name, userId, template ?? DEFAULT_TEMPLATE);
+      return spaces.create(name, userId, template ?? DEFAULT_TEMPLATE, size ?? DEFAULT_SIZE);
     },
 
     listMine: (userId) => spaces.listForUser(userId),

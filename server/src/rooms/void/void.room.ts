@@ -4,9 +4,11 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 // shared
 import {
   canEmptySpace,
+  DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
   encodeLook,
   findFurniture,
+  mapName,
   MAX_FURNITURE,
   PLAYER_RADIUS,
   placementError,
@@ -24,7 +26,6 @@ import {
   type Seat,
   type WavedPayload,
   type SpaceRole,
-  type SpaceTemplate,
 } from "@void/shared";
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
@@ -47,7 +48,8 @@ interface SpaceMap {
   tables: MapTable[];
   seats: Seat[];
 }
-export type SpaceMaps = Record<SpaceTemplate, SpaceMap>;
+/** Keyed by `mapName(template, size)`. */
+export type SpaceMaps = Record<string, SpaceMap>;
 
 interface VoidRoomOptions {
   auth: AuthService;
@@ -92,8 +94,9 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.options = options;
     this.setState(new VoidState());
     // A space that has no template on record (or one this build lacks) gets the classic office.
-    const template = await options.spaces.findTemplate(this.spaceId);
-    this.map = options.maps[template ?? DEFAULT_TEMPLATE];
+    const layout = await options.spaces.findLayout(this.spaceId);
+    const name = mapName(layout?.template ?? DEFAULT_TEMPLATE, layout?.size ?? DEFAULT_SIZE);
+    this.map = options.maps[name]!;
     this.grid = { ...this.map.grid, blocked: [...this.map.grid.blocked] };
     for (const piece of await options.furniture.list(this.spaceId)) {
       const item = findFurniture(piece.itemId);
@@ -254,7 +257,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     this.onMessage(MESSAGES.MOVE, (client, payload) => {
       const player = this.state.players.get(client.sessionId);
       const budget = this.budgets.get(client.sessionId);
-      const pos = parseMove(payload);
+      const pos = parseMove(payload, this.grid);
       if (!player || !budget || !pos) return;
       if (this.seated.has(client.sessionId)) {
         // Sitting: the client should have asked to stand first; keep it where it is.

@@ -3,20 +3,18 @@ import {
   collidesCircle,
   PLAYER_RADIUS,
   PLAYER_RUN_SPEED,
-  WORLD_HEIGHT,
-  WORLD_WIDTH,
   type CollisionGrid,
   type MovePayload,
   type Position,
 } from "@void/shared";
 
 /** Returns a clean position, or null if the client sent something we should ignore. */
-export function parseMove(payload: unknown): MovePayload | null {
+export function parseMove(payload: unknown, grid: CollisionGrid): MovePayload | null {
   if (typeof payload !== "object" || payload === null) return null;
   const { x, y } = payload as Record<string, unknown>;
   if (typeof x !== "number" || typeof y !== "number") return null;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x < 0 || x > WORLD_WIDTH || y < 0 || y > WORLD_HEIGHT) return null;
+  if (x < 0 || x > grid.cols * grid.tileSize || y < 0 || y > grid.rows * grid.tileSize) return null;
   return { x, y };
 }
 

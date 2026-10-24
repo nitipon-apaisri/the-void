@@ -4,15 +4,15 @@ import { readFileSync } from "node:fs";
 // shared
 import {
   createGrid,
-  MAP_COLS,
-  MAP_ROWS,
   isSeatFacing,
+  SPACE_SIZE_DIMENSIONS,
   SEATS_LAYER,
   TABLES_LAYER,
   TILE_SIZE,
   type CollisionGrid,
   type MapTable,
   type Seat,
+  type SpaceSize,
 } from "@void/shared";
 
 interface TiledLayer {
@@ -23,29 +23,25 @@ interface TiledLayer {
 /**
  * Builds the wall grid from a Tiled map: any tile on the "collision" layer blocks. The client
  * reads the same layer, so both sides agree on where walls are. Throws on a map that does not
- * match the shared dimensions, since every position check would then be wrong.
+ * match the dimensions of its size, since every position check would then be wrong.
  */
-export function parseCollisionGrid(tmj: unknown): CollisionGrid {
+export function parseCollisionGrid(tmj: unknown, size: SpaceSize): CollisionGrid {
+  const { cols, rows } = SPACE_SIZE_DIMENSIONS[size];
   const map = tmj as { width?: unknown; height?: unknown; tilewidth?: unknown; layers?: unknown };
-  if (map?.width !== MAP_COLS || map.height !== MAP_ROWS || map.tilewidth !== TILE_SIZE) {
-    throw new Error(`map must be ${MAP_COLS}x${MAP_ROWS} tiles of ${TILE_SIZE}px`);
+  if (map?.width !== cols || map.height !== rows || map.tilewidth !== TILE_SIZE) {
+    throw new Error(`a ${size} map must be ${cols}x${rows} tiles of ${TILE_SIZE}px`);
   }
   const layers = Array.isArray(map.layers) ? (map.layers as TiledLayer[]) : [];
   const layer = layers.find((l) => l.name === "collision");
-  if (!layer || !Array.isArray(layer.data) || layer.data.length !== MAP_COLS * MAP_ROWS) {
+  if (!layer || !Array.isArray(layer.data) || layer.data.length !== cols * rows) {
     throw new Error("the map has no usable collision layer");
   }
   const data = layer.data as unknown[];
-  return createGrid(
-    MAP_COLS,
-    MAP_ROWS,
-    TILE_SIZE,
-    (col, row) => Number(data[row * MAP_COLS + col]) > 0,
-  );
+  return createGrid(cols, rows, TILE_SIZE, (col, row) => Number(data[row * cols + col]) > 0);
 }
 
-export function loadCollisionGrid(file: string | URL): CollisionGrid {
-  return parseCollisionGrid(JSON.parse(readFileSync(file, "utf8")));
+export function loadCollisionGrid(file: string | URL, size: SpaceSize): CollisionGrid {
+  return parseCollisionGrid(JSON.parse(readFileSync(file, "utf8")), size);
 }
 
 /** The claimable desks from the map's "tables" layer. A map without one simply has none. */

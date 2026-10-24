@@ -5,21 +5,14 @@ export * from "./seat.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
-// World. Must match client/src/assets/maps/office.tmj (server/src/test/map.spec.ts checks it).
+// World. A map's size depends on its space (SPACE_SIZE_DIMENSIONS); only the tile is fixed.
 export const TILE_SIZE = 32;
-export const MAP_COLS = 90;
-export const MAP_ROWS = 67;
-export const WORLD_WIDTH = MAP_COLS * TILE_SIZE;
-export const WORLD_HEIGHT = MAP_ROWS * TILE_SIZE;
 // Movement. The server uses these to check a move is possible, the client to make it.
 export const PLAYER_SPEED = 180;
 // Going to a person from the People panel is quicker than walking. The server's speed limit
 // allows this much for everyone, so it is the ceiling a client can reach.
 export const PLAYER_RUN_SPEED = PLAYER_SPEED * 2;
 export const PLAYER_RADIUS = 12;
-
-// The middle of the central plaza.
-export const SPAWN = { x: 45 * TILE_SIZE + TILE_SIZE / 2, y: 33 * TILE_SIZE + TILE_SIZE / 2 };
 
 // A character is five layered parts from the LimeZu character generator, drawn in this order.
 // Each value is a position in the pack's sorted file list for that part, so the counts below
@@ -89,6 +82,37 @@ export function createGrid(
     for (let col = 0; col < cols; col++) blocked.push(isBlocked(col, row));
   }
   return { tileSize, cols, rows, blocked };
+}
+
+/**
+ * Where a player appears by default: the free spot closest to the middle of the map. Both sides
+ * work it out from their own copy of the walls, so no map has to say where its spawn is.
+ */
+export function findSpawn(grid: CollisionGrid, radius: number): Position {
+  const midCol = Math.floor(grid.cols / 2);
+  const midRow = Math.floor(grid.rows / 2);
+  const centre = (col: number, row: number): Position => ({
+    x: col * grid.tileSize + grid.tileSize / 2,
+    y: row * grid.tileSize + grid.tileSize / 2,
+  });
+  for (let d = 0; d <= Math.max(grid.cols, grid.rows); d++) {
+    let best: Position | undefined;
+    let bestDistance = Infinity;
+    for (let row = midRow - d; row <= midRow + d; row++) {
+      for (let col = midCol - d; col <= midCol + d; col++) {
+        if (Math.max(Math.abs(col - midCol), Math.abs(row - midRow)) !== d) continue;
+        if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) continue;
+        const spot = centre(col, row);
+        const distance = (col - midCol) ** 2 + (row - midRow) ** 2;
+        if (distance < bestDistance && !collidesCircle(grid, spot.x, spot.y, radius)) {
+          best = spot;
+          bestDistance = distance;
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return centre(midCol, midRow);
 }
 
 function tileBlocked(grid: CollisionGrid, col: number, row: number): boolean {
@@ -290,6 +314,29 @@ export const MAX_OWNED_SPACES = 5;
 export const SPACE_TEMPLATES = ["office", "open-plan", "studio", "empty"] as const;
 export type SpaceTemplate = (typeof SPACE_TEMPLATES)[number];
 export const DEFAULT_TEMPLATE: SpaceTemplate = "office";
+// How big a new space is, in tiles. scripts/import-art.mjs generates one map per template and
+// size, so keep its numbers the same as these.
+export const SPACE_SIZES = ["small", "medium", "large"] as const;
+export type SpaceSize = (typeof SPACE_SIZES)[number];
+export const DEFAULT_SIZE: SpaceSize = "medium";
+export const isSpaceSize = (value: unknown): value is SpaceSize =>
+  SPACE_SIZES.includes(value as SpaceSize);
+export const SPACE_SIZE_DIMENSIONS: Record<SpaceSize, { cols: number; rows: number }> = {
+  small: { cols: 60, rows: 45 },
+  medium: { cols: 90, rows: 67 },
+  large: { cols: 130, rows: 96 },
+};
+export const SPACE_SIZE_INFO: Record<SpaceSize, { name: string; blurb: string }> = {
+  small: { name: "Small", blurb: "60 x 45 tiles. A small team." },
+  medium: { name: "Medium", blurb: "90 x 67 tiles. A department." },
+  large: { name: "Large", blurb: "130 x 96 tiles. A whole company." },
+};
+/**
+ * The map file (client/src/assets/maps/<name>.tmj) for a template at a size. Medium keeps the
+ * plain template name, so the maps that existed before sizes did are still the medium ones.
+ */
+export const mapName = (template: SpaceTemplate, size: SpaceSize): string =>
+  size === DEFAULT_SIZE ? template : `${template}-${size}`;
 export const isSpaceTemplate = (value: unknown): value is SpaceTemplate =>
   SPACE_TEMPLATES.includes(value as SpaceTemplate);
 export const SPACE_TEMPLATE_INFO: Record<SpaceTemplate, { name: string; blurb: string }> = {
@@ -365,12 +412,15 @@ export interface SpaceSummary {
   name: string;
   role: SpaceRole;
   template: SpaceTemplate;
+  size: SpaceSize;
 }
 
 export interface CreateSpacePayload {
   name: string;
   /** Defaults to the classic office. */
   template?: SpaceTemplate;
+  /** Defaults to medium. */
+  size?: SpaceSize;
 }
 
 export interface SpaceMember {
