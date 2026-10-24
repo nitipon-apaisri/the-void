@@ -5,8 +5,8 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 ## What it does
 
 - **Accounts**: sign up with an email and password, edit your name and character, change email or password, sign out other devices, delete your account.
-- **Spaces**: each space is its own room with its own members and its own voice. You pick one after signing in; the last one opens by itself. A new space starts from a template: Classic office, Open plan, Studio or an Empty room.
-- **Invite links**: owners and admins share a link, optionally needing their approval; pending people appear in the People panel.
+- **Spaces**: each space is its own room with its own members and its own voice. After signing in you choose to join a space (one you are in, or a new one with a short code) or to create one; the last one opens by itself. A new space starts from a template (Classic office, Open plan, Studio or an Empty room) at a size (small, medium or large).
+- **Invite links and codes**: owners and admins share a link or a short code, optionally needing their approval; pending people appear in the People panel. Owners hand out roles, admins and owners remove people, and anyone can leave.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
 - **Sitting**: walk up to a chair and stop to sit down; move or click to stand again.
@@ -30,9 +30,12 @@ Built and tried by hand:
 - [x] Proximity voice, video and screen share
 - [x] Settings (range, devices, volume, keys, zoom, frame rate)
 - [x] Desktop app shell (Electron)
-- [x] Spaces, members and roles, with a space picker
+- [x] Spaces, members and roles, with a Join or Create space picker
 - [x] People panel: online and offline, search, walk to someone
-- [x] Invite links, with optional approval
+- [x] Invite links and join codes, with optional approval
+- [x] Change roles, remove members, hand over a space, leave a space
+- [x] Space sizes (small, medium, large)
+- [x] Load test with 100 bots (`npm run load`)
 - [x] Space templates (Classic office, Open plan, Studio, Empty room) picked when a space is created
 - [x] Bigger map (90 x 67 tiles), mini map and map buttons
 - [x] Server-side walls and speed limit
@@ -44,12 +47,10 @@ Built and tried by hand:
 
 Planned (see [`PLAN.md`](PLAN.md)):
 
-- [ ] Change roles, remove members, kick and ban
-- [ ] Send each client only nearby players (needed for 100 people on this map)
+- [ ] Ban (a removed person can return through an open link)
 - [ ] Text chat, status and do-not-disturb, follow a person
 - [ ] Desktop notifications and the `thevoid://join/...` link
 - [ ] Packaging for macOS and Windows, signing, auto-update
-- [ ] Load test with 100 bots
 - [ ] Password reset and email verification (needs a mail provider)
 
 The full roadmap is in [`PLAN.md`](PLAN.md).
@@ -130,6 +131,21 @@ Game rules live in `client/src/systems/` as pure functions with no Phaser in the
 - Login and register are rate limited, and CORS is limited to `CORS_ORIGINS`.
 - The LiveKit key and secret stay on the server; clients get short-lived tokens limited to their space.
 - Never commit `.env`, keys or tokens.
+
+## Server specification
+
+A starting point for about 100 people at once. Only the game server numbers are measured (`npm run load -- --bots 100 --seconds 30 --size large`, 100 bots walking in one space on a laptop); the voice and network figures are estimates until you run LiveKit's own load tester (`lk load-test`) with realistic camera use.
+
+| Part                                 | Measured or estimated                                                                                                | Start with                                               |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Game server (Colyseus, one process)  | Measured: about 9% of one core, 110 MB, about 17 KB/s out per client (1.7 MB/s in total), event loop p99 under 25 ms | 1 vCPU, 1 to 2 GB RAM. One room is single-threaded       |
+| Postgres                             | Light: reads and writes are small, and a position is saved only when someone leaves                                  | 1 vCPU, 1 to 2 GB RAM, 10 GB disk, or a managed instance |
+| LiveKit (voice, video, screen share) | Estimate: audio 30 to 50 kbps a stream, video 0.3 to 1.5 Mbps; people subscribe only to those nearby                 | 4 vCPU, 8 GB RAM, 1 Gbps link, public IP, open UDP ports |
+
+- **One machine is enough to start**: 4 vCPU and 8 GB RAM running everything (game server, LiveKit and Postgres in Docker) with a 1 Gbps link. Split LiveKit onto its own machine when you want to scale voice separately.
+- **Bandwidth is the limit to watch**, not CPU. A realistic mix (mostly audio, some video) is roughly 10 to 50 Mbps out of LiveKit; the worst case, 100 cameras on with about 5 people nearby each, is 100 to 250 Mbps. Check the egress price of your host.
+- **Not measured**: LiveKit under load, the HTTP API and database, and 100 real browsers (client frame rate with many sprites on screen).
+- The game server does not yet send each client only nearby players; at this size it is not needed (see `PLAN.md`, step 8).
 
 ## Before going to production
 
