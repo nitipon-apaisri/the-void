@@ -14,7 +14,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
-- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting.
+- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting. A ring at someone's feet and a highlight on their video show who is talking.
 - **Character customize**: five layered parts (skin, eyes, outfit, hair, extra), each with a style and a colour.
 - **Settings**: range, mic, camera and speaker choice, volume, movement keys, zoom, frame rate cap.
 

@@ -15,6 +15,8 @@ import { animationKey, ensureLookTexture } from "./look-textures";
 
 // How long after the last step a character counts as standing still.
 const IDLE_AFTER_MS = 150;
+// The accent used for "on" states in the interface (--v-on).
+const SPEAKING_COLOR = 0x5eead4;
 // The character stands in the lower part of its frame; this lifts the name above the head.
 const NAME_OFFSET = -(FRAME.height * 0.7) + PLAYER_RADIUS;
 
@@ -22,6 +24,8 @@ const NAME_OFFSET = -(FRAME.height * 0.7) + PLAYER_RADIUS;
 export class PlayerSprite extends Phaser.GameObjects.Container {
   private readonly sprite: Phaser.GameObjects.Sprite;
   private readonly label: Phaser.GameObjects.Text;
+  private readonly ring: Phaser.GameObjects.Ellipse;
+  private pulse?: Phaser.Tweens.Tween;
   private lookCode = "";
   private textureKey = "";
   private loadId = 0;
@@ -41,8 +45,13 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     this.label = scene.add
       .text(0, NAME_OFFSET, "", { color: "#e5e7eb", fontSize: "12px" })
       .setOrigin(0.5, 1);
+    // A ring on the floor around the feet while this player talks; under the character.
+    this.ring = scene.add
+      .ellipse(0, PLAYER_RADIUS - 2, 44, 18)
+      .setStrokeStyle(3, SPEAKING_COLOR)
+      .setVisible(false);
     this.setProfile(name, look);
-    this.add([this.sprite, this.label]);
+    this.add([this.ring, this.sprite, this.label]);
     this.setDepth(10);
     scene.add.existing(this);
   }
@@ -79,6 +88,24 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       duration: 1600,
       ease: "Sine.easeOut",
       onComplete: () => hand.destroy(),
+    });
+  }
+
+  /** A pulsing ring at the feet while this player is talking. Cheap to call repeatedly. */
+  setSpeaking(on: boolean) {
+    if (this.ring.visible === on) return;
+    this.ring.setVisible(on);
+    this.pulse?.remove();
+    this.pulse = undefined;
+    this.ring.setScale(1);
+    if (!on) return;
+    this.pulse = this.scene.tweens.add({
+      targets: this.ring,
+      scale: 1.22,
+      duration: 480,
+      ease: "Sine.easeInOut",
+      yoyo: true,
+      repeat: -1,
     });
   }
 

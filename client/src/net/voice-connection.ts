@@ -55,6 +55,8 @@ export interface VoiceConnection {
   onPlayerGone(cb: (playerId: string) => void): void;
   /** Our own camera preview. */
   onLocalVideo(cb: (el: HTMLVideoElement | undefined) => void): void;
+  /** Who is talking now: remote players by id, and whether we are. Fires when it changes. */
+  onSpeakers(cb: (remote: ReadonlySet<string>, self: boolean) => void): void;
   /** Our share started or stopped, including when the browser's own "stop sharing" ends it. */
   onLocalScreen(cb: (sharing: boolean) => void): void;
   onDisconnect(cb: () => void): void;
@@ -71,6 +73,7 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
   let onPlayerGone: Parameters<VoiceConnection["onPlayerGone"]>[0] = () => {};
   let onLocalVideo: Parameters<VoiceConnection["onLocalVideo"]>[0] = () => {};
   let onLocalScreen: Parameters<VoiceConnection["onLocalScreen"]>[0] = () => {};
+  let onSpeakers: Parameters<VoiceConnection["onSpeakers"]>[0] = () => {};
 
   const isScreen = (source: Track.Source) =>
     source === Track.Source.ScreenShare || source === Track.Source.ScreenShareAudio;
@@ -101,6 +104,12 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
     .on(RoomEvent.ParticipantConnected, applySubscriptions)
     .on(RoomEvent.ParticipantDisconnected, (p) => onPlayerGone(p.identity))
     .on(RoomEvent.TrackPublished, applySubscriptions)
+    .on(RoomEvent.ActiveSpeakersChanged, (speakers) =>
+      onSpeakers(
+        new Set(speakers.filter((s) => !s.isLocal).map((s) => s.identity)),
+        speakers.some((s) => s.isLocal),
+      ),
+    )
     .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
       // Shared-screen audio is not published by us, so there is nothing to play for it.
       if (track.source === Track.Source.ScreenShareAudio) return;
@@ -156,6 +165,7 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
     onPlayerGone: (cb) => (onPlayerGone = cb),
     onLocalVideo: (cb) => (onLocalVideo = cb),
     onLocalScreen: (cb) => (onLocalScreen = cb),
+    onSpeakers: (cb) => (onSpeakers = cb),
     onDisconnect: (cb) =>
       room.on(RoomEvent.Disconnected, () => {
         if (!leaving) cb();

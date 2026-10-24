@@ -14,6 +14,8 @@ export interface VoicePanel {
   removeMedia(playerId: string, el: HTMLMediaElement): void;
   removePlayer(playerId: string): void;
   setLocalVideo(el: HTMLVideoElement | undefined): void;
+  /** Rings the video of whoever is talking: the players listed, and our own if `self`. */
+  setSpeaking(speaking: ReadonlySet<string>, self: boolean): void;
   /** 0 to 1; applies to everyone heard now and to anyone who arrives later. */
   setVolume(volume: number): void;
   onToggleMic(cb: (on: boolean) => Promise<void>): void;
@@ -31,6 +33,7 @@ const STYLES = `
 .void-voice__videos, .void-voice__screens { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
 .void-voice__videos video { width: 168px; height: 126px; object-fit: cover; border-radius: var(--v-radius);
   background: var(--v-glass-solid); border: 1px solid var(--v-line); box-shadow: var(--v-shadow); }
+.void-voice__videos video.is-speaking { border-color: var(--v-on); box-shadow: 0 0 0 2px var(--v-on), var(--v-shadow); }
 .void-voice__screens video { width: min(520px, 90vw); aspect-ratio: 16 / 9; object-fit: contain;
   border-radius: var(--v-radius); background: #000; border: 1px solid var(--v-line); box-shadow: var(--v-shadow); }
 .void-voice__controls { display: flex; gap: 4px; padding: 6px; border-radius: 22px; }
@@ -153,6 +156,13 @@ export function createVoicePanel(): VoicePanel {
       el.muted = true;
       el.setAttribute("aria-label", "Your camera");
       videos.prepend(el);
+    },
+    setSpeaking(speaking, self) {
+      for (const [id, el] of media) {
+        if (id.endsWith(":video"))
+          el.classList.toggle("is-speaking", speaking.has(id.slice(0, -6)));
+      }
+      localVideo?.classList.toggle("is-speaking", self);
     },
     setVolume(next) {
       volume = next;

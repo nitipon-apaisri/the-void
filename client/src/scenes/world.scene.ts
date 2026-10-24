@@ -71,6 +71,7 @@ import { findPath, followPath } from "../systems/pathfinding";
 import { stepPosition } from "../systems/movement";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
+import { audibleSpeakers } from "../systems/speaking";
 import { tablePrompt, type Claim } from "../systems/tables";
 
 // objects
@@ -120,6 +121,9 @@ export class WorldScene extends Phaser.Scene {
   private voicePanel!: VoicePanel;
   private voice?: VoiceConnection;
   private nearby: ReadonlySet<string> = new Set();
+  // Who LiveKit says is talking; shown only for people in hearing range (see showSpeaking).
+  private speaking: ReadonlySet<string> = new Set();
+  private selfSpeaking = false;
   private lastProximity = 0;
   private grid!: CollisionGrid;
   private readonly auth = createAuthClient(API_URL);
@@ -1219,8 +1223,14 @@ export class WorldScene extends Phaser.Scene {
       voice.onPlayerGone((id) => this.voicePanel.removePlayer(id));
       voice.onLocalVideo((el) => this.voicePanel.setLocalVideo(el));
       voice.onLocalScreen((on) => this.voicePanel.setScreenSharing(on));
+      voice.onSpeakers((remote, self) => {
+        this.speaking = remote;
+        this.selfSpeaking = self;
+        this.showSpeaking();
+      });
       voice.onDisconnect(() => {
         this.voice = undefined;
+        this.clearSpeaking();
         this.voicePanel.setEnabled(false);
         this.toast.show("Voice disconnected", "error", 3000);
       });
@@ -1251,14 +1261,31 @@ export class WorldScene extends Phaser.Scene {
     const voice = this.voice;
     this.voice = undefined;
     this.nearby = new Set();
+    this.clearSpeaking();
     this.voicePanel.setEnabled(false);
     await voice?.leave();
+  }
+
+  // The ring and the video highlight follow who is talking and who is close enough to hear.
+  private showSpeaking() {
+    const heard = audibleSpeakers(this.speaking, this.nearby);
+    for (const [id, sprite] of this.others) sprite.setSpeaking(heard.has(id));
+    this.me?.setSpeaking(this.selfSpeaking);
+    this.voicePanel.setSpeaking(heard, this.selfSpeaking);
+  }
+
+  private clearSpeaking() {
+    this.speaking = new Set();
+    this.selfSpeaking = false;
+    this.showSpeaking();
   }
 
   private updateProximity(me: PlayerSprite) {
     const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
     this.nearby = nearbyIds(me, others, this.settings.proximityTiles * TILE_SIZE, this.nearby);
     this.voice?.setNearby(sortByDistance(me, others, this.nearby));
+    // Walking out of range stops the ring even if they keep talking.
+    this.showSpeaking();
   }
 
   // Places to sit, from the map's "seats" layer. Desk chairs have no art; the others are tiles.
