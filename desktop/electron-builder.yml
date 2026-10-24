@@ -1,0 +1,39 @@
+# Packaging for macOS and Windows. Build with `npm run package:desktop` from the repo root.
+appId: com.thevoid.app
+productName: The Void
+directories:
+  output: ../release
+  buildResources: build
+
+# main.js and preload.js are bundled by esbuild, so no node_modules ship in the app.
+files:
+  - dist/**
+  - package.json
+
+# The built client, served by the app:// protocol (see src/windows/app-protocol.ts).
+extraResources:
+  - from: ../client/dist
+    to: client
+
+mac:
+  category: public.app-category.business
+  icon: build/icon.png
+  target:
+    - dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # macOS shows these when the app first asks for the camera or microphone.
+  extendInfo:
+    NSCameraUsageDescription: The Void uses your camera so people near you can see you.
+    NSMicrophoneUsageDescription: The Void uses your microphone so people near you can hear you.
+
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

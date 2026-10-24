@@ -76,9 +76,11 @@ server/migrations/     # timestamped, re-runnable .sql files (npm run migrate -w
 desktop/src/
 ├── main.ts            # app lifecycle and window creation
 ├── preload.ts         # contextBridge API exposed to the renderer
+├── origin.ts          # originOf: the only way to compare page origins (see Packaging)
 ├── ipc/               # main-process IPC handlers
-├── windows/
+├── windows/           # the main window and the app:// protocol that serves the built client
 └── test/
+desktop/build/         # icon, macOS entitlements; electron-builder.yml sits next to src/
 
 shared/src/            # message names, payload types, constants (imported as @void/shared)
 ```
@@ -154,6 +156,7 @@ npm run migrate -w server  # apply database migrations
 npm run dev:server    # Colyseus on :2567
 npm run dev:client    # Vite on :5173
 npm run dev:desktop   # builds and launches Electron
+npm run package:desktop  # builds the client, then packages the desktop app into release/ (see Packaging)
 ```
 
 Desktop is bundled with esbuild (so `@void/shared` is inlined, including into the sandboxed preload); `tsc` only typechecks it. Typecheck a package with `npx tsc -p .` inside it; `npm run build -w client` builds the client.
@@ -166,6 +169,14 @@ npm run assets:import # copy art sheets from your LimeZu pack into client/src/as
 npm run audit:osv     # osv-scanner on package-lock.json (also runs on pre-push)
 npm run audit:secrets # gitleaks on git history (also runs on pre-push; staged files on pre-commit)
 ```
+
+## Packaging
+
+`npm run package:desktop` builds the client (`VITE_SERVER_URL` is baked in, so set the real server address in `.env` first), bundles the main process and runs electron-builder (`desktop/electron-builder.yml`; output in `release/`, git-ignored). `npm run pack -w desktop` makes only the unpacked app, which is what to use to try a change. Add `CSC_IDENTITY_AUTO_DISCOVERY=false` to skip code signing.
+
+- A packaged app serves its own built client from `resources/client` over a custom `app://void/` scheme (`desktop/src/windows/app-protocol.ts`), so the server's `CORS_ORIGINS` must include `app://void`. `CLIENT_URL` is ignored when packaged. `URL.origin` is `"null"` for custom schemes, so always compare pages with `originOf` from `desktop/src/origin.ts`, never with `new URL(x).origin`.
+- Electron is pinned to an exact version in `desktop/package.json` because electron-builder cannot resolve a range.
+- macOS: the camera and microphone usage strings (`extendInfo`) and the entitlements (`desktop/build/entitlements.mac.plist`) are only honoured on a signed build. Signing and notarization need an Apple Developer account and are not set up yet; Windows is configured (NSIS) but has never been built or run. The icon master is `desktop/build/icon.png` (1024 px, from `icon.svg`).
 
 Husky: `pre-commit` → lint-staged (Prettier + Oxlint on staged files) and `gitleaks protect --staged`; `pre-push` → `npm run audit:osv` and `npm run audit:secrets` (need `osv-scanner` and `gitleaks` installed, e.g. `brew install osv-scanner gitleaks`). Allowlist false positives in `.gitleaks.toml`, never by skipping the hook.
 

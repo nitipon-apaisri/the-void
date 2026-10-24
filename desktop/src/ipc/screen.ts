@@ -9,19 +9,12 @@ import {
 
 import { DESKTOP_IPC, type ScreenSourceList } from "@void/shared";
 
+import { originOf } from "../origin";
 import type { ScreenSelection } from "./screen-selection";
 
 const THUMBNAIL = { width: 320, height: 200 };
 const MAC_SCREEN_SETTINGS =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
-
-const originOf = (url: string) => {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return undefined;
-  }
-};
 
 /**
  * Screen sharing in the desktop app: the renderer shows its own picker, tells the main

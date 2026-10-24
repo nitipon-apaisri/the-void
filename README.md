@@ -49,7 +49,7 @@ Planned (see [`PLAN.md`](PLAN.md)):
 
 - [ ] Text chat, status and do-not-disturb, follow a person
 - [ ] Desktop notifications and the `thevoid://join/...` link
-- [ ] Packaging for macOS and Windows, signing, auto-update
+- [ ] Packaging for macOS and Windows: `npm run package:desktop` is set up (unsigned macOS app checked); signing, the Windows build and auto-update are not done
 - [ ] Password reset and email verification (needs a mail provider)
 
 The full roadmap is in [`PLAN.md`](PLAN.md).
@@ -108,6 +108,7 @@ npm run format        # prettier --write
 npm test              # vitest
 npm run audit:osv     # known-vulnerability scan of package-lock.json
 npm run audit:secrets # gitleaks scan of the git history for committed secrets
+npm run package:desktop # build the client and package the desktop app into release/ (unsigned unless you set up signing)
 ```
 
 Husky runs Prettier and Oxlint on staged files before a commit, and the vulnerability scan before a push.
@@ -149,7 +150,7 @@ A starting point for about 100 people at once. The game server numbers come from
 
 ## Before going to production
 
-Set a strong `AUTH_SECRET`, `CORS_ORIGINS` for the packaged client and `TRUST_PROXY_HOPS`; use a real LiveKit key and TLS (`wss://`); add the macOS `Info.plist` usage strings and code signing. Password reset and email verification need a mail provider and are not built yet. Windows and packaged builds are untested.
+Set a strong `AUTH_SECRET`, `CORS_ORIGINS` for the packaged client and `TRUST_PROXY_HOPS`; use a real LiveKit key and TLS (`wss://`); add `app://void` to `CORS_ORIGINS` for the packaged desktop app, set `VITE_SERVER_URL` to the real server before building it, and set up macOS code signing and notarization (the camera and microphone usage strings are already in the build). Password reset and email verification need a mail provider and are not built yet. The Windows build and a signed, installed app are untested.
 
 ## Licence
 
