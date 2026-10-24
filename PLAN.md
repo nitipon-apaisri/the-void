@@ -58,7 +58,7 @@ Goal: a self-built virtual workspace for ~100 concurrent users, as a desktop app
 5. **Admin**: roles, map editing workflow, room permissions.
 6. **Desktop polish**: preload script, tray, notifications, global push-to-talk, deep links (`thevoid://join/...`), screen-source picker.
 7. **Packaging**: electron-builder for macOS `.dmg` and Windows `.exe` (AppImage optional); macOS signing and notarization (Apple Developer account); Windows code signing; auto-update.
-8. **Load test**: 100 simulated bots before real users.
+8. **Load test** (built and run): `npm run load -- --bots 100 --seconds 30 --size large` starts the real room with an in-memory backend (no Postgres) in a child process and joins bots that walk to random spots at the client's rate (12.5 moves a second). It reports server CPU, event loop delay, memory, bandwidth per client and moves the server corrected, and fails if a bot cannot join, is dropped, or event loop p99 passes 50 ms. Result with 100 bots on a laptop: about 9% of one core, event loop p99 under 25 ms (the timer itself adds about 10), 110 MB, 17 KB/s out per client on both the medium and the large map, so interest management is not needed yet. Not covered: LiveKit voice and video, the HTTP API and the database, and real browsers (100 Phaser clients are a client frame-rate question). Test the real client with a few windows before a launch.
 
 ## Open decisions
 

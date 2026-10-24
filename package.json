@@ -18,8 +18,9 @@
     "audit:osv": "osv-scanner scan source --lockfile=package-lock.json",
     "audit:secrets": "gitleaks detect --redact --verbose",
     "test": "vitest run",
-    "typecheck": "tsc -p shared --noEmit && tsc -p client --noEmit && tsc -p server --noEmit && tsc -p desktop --noEmit",
-    "assets:import": "node scripts/import-art.mjs"
+    "typecheck": "tsc -p shared --noEmit && tsc -p client --noEmit && tsc -p server --noEmit && tsc -p desktop --noEmit && tsc -p test/load --noEmit",
+    "assets:import": "node scripts/import-art.mjs",
+    "load": "tsx test/load/run.ts"
   },
   "devDependencies": {
     "husky": "^9.1.7",

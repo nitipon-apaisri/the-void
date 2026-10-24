@@ -112,7 +112,7 @@ Order with `//` labels, blank line between groups:
 
 - Runner: **Vitest**. Unit tests live in `[package]/src/test/*.spec.ts` (or `rooms/[room]/test/` for a room). E2E / multi-client tests live in root `test/`.
 - Test `systems/` logic (movement, proximity radius, collision), server message validation and room join/leave/move behaviour. Do not unit-test Phaser scenes.
-- Load test (100 simulated bots, roadmap step 8) lives in `test/load/`.
+- Load test (100 simulated bots, roadmap step 8) lives in `test/load/` and is not part of `npm test`: `npm run load -- --bots 100 --seconds 30 --size large` (options: `--bots --seconds --size --template --ramp --hz`). It needs no database; run it only when asked.
 - **Do not run tests** (`npm test`, `vitest`, etc.) unless the user explicitly asks, or the task is about a failing test or CI. Writing specs is fine; executing them is not, unless requested.
 
 ## New feature checklist
