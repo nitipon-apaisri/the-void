@@ -15,6 +15,10 @@ import {
   type RemoveFurniturePayload,
   type AddZonePayload,
   type MapZone,
+  type AnswerKnockPayload,
+  type KnockPayload,
+  type KnockResultPayload,
+  type LockZonePayload,
   type RemoveZonePayload,
   type WavedPayload,
   type Look,
@@ -64,6 +68,14 @@ export interface VoidConnection {
   removeZone(id: string): Promise<void>;
   /** Fires with every private room (the template's and the drawn ones) whenever one changes. */
   onZones(cb: (zones: MapZone[]) => void): void;
+  /** Lock or unlock the room you stand in. Rejects with the server's reason. */
+  lockZone(id: string, locked: boolean): Promise<void>;
+  /** Anyone inside a locked room may let a knocker in or turn them away. */
+  answerKnock(knockerId: string, allow: boolean): Promise<void>;
+  /** Someone is knocking on the room you are in. */
+  onKnock(cb: (knock: KnockPayload) => void): void;
+  /** A knock moved on: ours (knocking, let in, turned away) or one on our room that was answered. */
+  onKnockResult(cb: (result: KnockResultPayload) => void): void;
   /** Sit on a seat within reach; the room snaps us onto it. Rejects with its reason. */
   sit(seatId: string): Promise<void>;
   stand(): Promise<void>;
@@ -190,14 +202,28 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
           width: z.width,
           height: z.height,
           custom: z.custom,
+          locked: z.locked,
         });
         emit();
+        // Locking happens in place, so a change has to be passed on too.
+        $(z).listen("locked", (locked: boolean) => {
+          zones.set(id, { ...zones.get(id)!, locked });
+          emit();
+        });
       });
       state.onRemove((_: any, id: string) => {
         zones.delete(id);
         emit();
       });
     },
+    lockZone: async (id, locked) => {
+      await room.request(MESSAGES.LOCK_ZONE, { id, locked } satisfies LockZonePayload);
+    },
+    answerKnock: async (knockerId, allow) => {
+      await room.request(MESSAGES.ANSWER_KNOCK, { knockerId, allow } satisfies AnswerKnockPayload);
+    },
+    onKnock: (cb) => room.onMessage(MESSAGES.KNOCK, cb),
+    onKnockResult: (cb) => room.onMessage(MESSAGES.KNOCK_RESULT, cb),
     sit: async (seatId) => {
       await room.request(MESSAGES.SIT, { seatId } satisfies SitPayload);
     },

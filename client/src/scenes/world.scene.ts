@@ -9,6 +9,7 @@ import {
   SEATS_LAYER,
   zoneError,
   type AddZonePayload,
+  type KnockOutcome,
   type MapZone,
   SIT_RANGE,
   TABLES_LAYER,
@@ -92,6 +93,7 @@ import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
 import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace, type MapPreview } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
+import { createRoomBar, type RoomBar } from "../ui/room-bar";
 import { createDecoratePanel, type DecoratePanel, type DecorateTool } from "../ui/decorate-panel";
 import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
@@ -188,6 +190,7 @@ export class WorldScene extends Phaser.Scene {
   private suppressSeat?: Seat;
   private lastMoveAt = 0;
   private waveButton?: WaveButton;
+  private roomBar?: RoomBar;
   private waveTarget?: string;
   // True while the route came from "go to a person": that is quicker than walking.
   private running = false;
@@ -245,6 +248,7 @@ export class WorldScene extends Phaser.Scene {
       this.mapControls?.destroy();
       this.tablePromptView?.destroy();
       this.waveButton?.destroy();
+      this.roomBar?.destroy();
       this.decorate?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
@@ -276,6 +280,10 @@ export class WorldScene extends Phaser.Scene {
     );
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
+    this.roomBar = createRoomBar({
+      onLock: (locked) => void this.lockRoom(locked),
+      onAnswer: (knockerId, allow) => void this.answerKnock(knockerId, allow),
+    });
     this.setUpSeats(map);
     this.baseBlocked = [...this.grid.blocked];
     this.decorate = createDecoratePanel({
@@ -1183,6 +1191,7 @@ export class WorldScene extends Phaser.Scene {
           this.me?.setPosition(p.x, p.y);
           this.route = [];
           this.myZone = p.zone;
+          this.refreshRoomBar();
           return;
         }
         const sprite = this.spawnPlayer(p.x, p.y, p.name, p.look);
@@ -1242,6 +1251,8 @@ export class WorldScene extends Phaser.Scene {
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));
       connection.onZones((zones) => this.syncZones(zones));
+      connection.onKnock((knock) => this.roomBar?.addKnock(knock.knockerId, knock.name));
+      connection.onKnockResult((r) => this.knockResult(r.knockerId, r.zoneId, r.result));
       this.decorate?.setAvailable(true, this.space ? canEmptySpace(this.space.role) : false);
       void this.startVoice(connection);
       connection.onDrop(() => {
@@ -1373,6 +1384,7 @@ export class WorldScene extends Phaser.Scene {
     for (const art of this.zoneArt) art.destroy();
     this.zoneArt = [];
     this.zones = new Map(list.map((z) => [z.id, z]));
+    this.refreshRoomBar();
     for (const z of list) {
       this.zoneArt.push(
         this.add
@@ -1381,7 +1393,7 @@ export class WorldScene extends Phaser.Scene {
           .setStrokeStyle(2, 0x8b93ff, 0.45)
           .setDepth(1),
         this.add
-          .text(z.x + 8, z.y + 6, `${z.name} (private)`, {
+          .text(z.x + 8, z.y + 6, `${z.locked ? "🔒 " : ""}${z.name} (private)`, {
             fontFamily: "sans-serif",
             fontSize: "12px",
             color: "#cfd3ff",
@@ -1395,8 +1407,49 @@ export class WorldScene extends Phaser.Scene {
   private enterZone(zone: string) {
     if (zone === this.myZone) return;
     this.myZone = zone;
+    this.refreshRoomBar();
     const name = this.zones.get(zone)?.name;
     this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
+  }
+
+  private refreshRoomBar() {
+    const room = this.zones.get(this.myZone);
+    this.roomBar?.setRoom(room && { name: room.name, locked: Boolean(room.locked) });
+  }
+
+  private async lockRoom(locked: boolean) {
+    try {
+      await this.connection?.lockZone(this.myZone, locked);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 2500);
+    }
+  }
+
+  private async answerKnock(knockerId: string, allow: boolean) {
+    this.roomBar?.removeKnock(knockerId);
+    try {
+      await this.connection?.answerKnock(knockerId, allow);
+    } catch {
+      // Someone else answered first, or they left: nothing to do.
+    }
+  }
+
+  // Our own knock tells us where it stands; for everyone else it just closes the prompt.
+  private knockResult(knockerId: string, zoneId: string, result: KnockOutcome) {
+    this.roomBar?.removeKnock(knockerId);
+    if (knockerId !== this.connection?.sessionId) return;
+    const name = this.zones.get(zoneId)?.name ?? "the room";
+    const text = {
+      knocking: `Knocking on ${name}…`,
+      allowed: `You can go into ${name}`,
+      denied: `You were not let into ${name}`,
+      timeout: `Nobody answered at ${name}`,
+    }[result];
+    this.toast.show(
+      text,
+      result === "allowed" ? "success" : "info",
+      result === "knocking" ? 4000 : 3000,
+    );
   }
 
   // The rectangle between two corner tiles, as a room to add.

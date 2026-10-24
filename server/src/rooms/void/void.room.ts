@@ -29,6 +29,11 @@ import {
   zoneAt,
   zoneError,
   canManageZones,
+  KNOCK_TIMEOUT_MS,
+  canEnterLockedZone,
+  type KnockOutcome,
+  type KnockPayload,
+  type KnockResultPayload,
   MAX_CUSTOM_ZONES,
   SPACE_SIZE_DIMENSIONS,
   TILE_SIZE,
@@ -51,7 +56,13 @@ import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
-import { parseAddZone, parseRemoveZone } from "./handlers/zone.handler.js";
+import { ZoneAccess } from "./handlers/zone-access.js";
+import {
+  parseAddZone,
+  parseAnswerKnock,
+  parseLockZone,
+  parseRemoveZone,
+} from "./handlers/zone.handler.js";
 import { Furniture, Player, TableClaim, VoidState, Zone } from "./void.state.js";
 
 /** What the server reads from a template's map file. */
@@ -100,6 +111,9 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   // Who sits where, and where they stood before, so standing up can put them back.
   private readonly seated = new Map<string, { seat: Seat; before: Position }>();
   private readonly lastWave = new Map<string, number>();
+  private readonly access = new ZoneAccess();
+  // The rooms as a list, rebuilt only when one is added or removed (moves read it every step).
+  private zoneCache: MapZone[] | undefined;
   // Who placed each piece (by piece id); a piece from before this was recorded has no entry.
   private readonly placedBy = new Map<string, string>();
   private readonly onMemberEvent = (event: MemberEvent) => this.applyMemberEvent(event);
@@ -127,12 +141,12 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!this.map.tables.some((t) => t.id === claim.tableId)) continue;
       this.state.tables.set(claim.tableId, this.toClaim(claim.userId, claim.name));
     }
-    for (const z of this.map.zones) this.state.zones.set(z.id, this.toZone(z));
+    for (const z of this.map.zones) this.putZone(z.id, this.toZone(z));
     // Rooms drawn in this space, read by the room's own size so one that no longer fits is dropped.
     const dims = SPACE_SIZE_DIMENSIONS[layout?.size ?? DEFAULT_SIZE];
     for (const z of await options.zones.list(this.spaceId)) {
       if (zoneError(z, this.zoneList(), dims.cols, dims.rows)) continue;
-      this.state.zones.set(z.id, this.toZone(this.fromStored(z), true));
+      this.putZone(z.id, this.toZone(this.fromStored(z), true));
     }
     this.answer(MESSAGES.ADD_ZONE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
@@ -151,7 +165,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
         await options.zones.remove(this.spaceId, id);
         throw new Error(late);
       }
-      this.state.zones.set(id, this.toZone(this.fromStored({ id, name, ...request }), true));
+      this.putZone(id, this.toZone(this.fromStored({ id, name, ...request }), true));
       this.relocateAll();
       return true;
     });
@@ -163,8 +177,30 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       // The template's rooms are part of the map; only the ones drawn here can go.
       if (!this.state.zones.get(request.id)?.custom) throw new Error("that room is gone");
       await options.zones.remove(this.spaceId, request.id);
-      this.state.zones.delete(request.id);
+      this.dropZone(request.id);
       this.relocateAll();
+      return true;
+    });
+    this.answer(MESSAGES.LOCK_ZONE, (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseLockZone(payload);
+      const zone = request && this.state.zones.get(request.id);
+      if (!player || !account || !request || !zone) throw new Error("that room is gone");
+      if (player.zone !== request.id && !canEnterLockedZone(account.role)) {
+        throw new Error("you have to be in the room to lock it");
+      }
+      zone.locked = request.locked;
+      if (!request.locked) this.openZone(request.id);
+      return true;
+    });
+    this.answer(MESSAGES.ANSWER_KNOCK, (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const request = parseAnswerKnock(payload);
+      const zoneId = request && this.access.knockingOn(request.knockerId);
+      if (!player || !request || !zoneId) throw new Error("nobody is knocking");
+      if (player.zone !== zoneId) throw new Error("you are not in that room");
+      this.closeKnock(request.knockerId, zoneId, request.allow ? "allowed" : "denied");
       return true;
     });
     // Only joined players can ask, and the identity is their session id, never client-supplied.
@@ -221,6 +257,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (taken.has(seat.id)) throw new Error("someone is sitting there");
       // The same reach rule the client uses to offer the seat.
       if (nearestFreeSeat([seat], taken, player)?.id !== seat.id) throw new Error("move closer");
+      const room = zoneAt(this.zoneList(), seat);
+      if (room && room !== player.zone && !this.mayEnter(client, room)) {
+        throw new Error("that room is locked");
+      }
       this.seated.set(client.sessionId, { seat, before: { x: player.x, y: player.y } });
       this.place(client, player, seat, seat);
       return true;
@@ -328,6 +368,12 @@ export class VoidRoom extends Room<{ state: VoidState }> {
         client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
         return;
       }
+      const target = zoneAt(this.zoneList(), pos);
+      if (target && target !== player.zone && !this.mayEnter(client, target)) {
+        // A locked room: the same as a wall, and the people inside hear someone knock.
+        this.refuseEntry(client, player, target);
+        return;
+      }
       if (!acceptMove(this.grid, budget, player, pos, Date.now())) {
         // Walls and walking speed are the server's call: put the client back where we have them.
         client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
@@ -335,7 +381,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       player.x = pos.x;
       player.y = pos.y;
-      player.zone = zoneAt(this.zoneList(), pos);
+      this.setZone(player, zoneAt(this.zoneList(), pos));
     });
     // Removals and role changes happen over HTTP; this is how the people already in hear of them.
     await this.presence.subscribe(memberChannel(this.spaceId), this.onMemberEvent);
@@ -394,7 +440,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   }
 
   private zoneList(): MapZone[] {
-    return [...this.state.zones.entries()].map(([id, z]) => ({
+    this.zoneCache ??= [...this.state.zones.entries()].map(([id, z]) => ({
       id,
       name: z.name,
       x: z.x,
@@ -402,6 +448,18 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       width: z.width,
       height: z.height,
     }));
+    return this.zoneCache;
+  }
+
+  private putZone(id: string, zone: Zone) {
+    this.state.zones.set(id, zone);
+    this.zoneCache = undefined;
+  }
+
+  private dropZone(id: string) {
+    this.state.zones.delete(id);
+    this.zoneCache = undefined;
+    this.openZone(id);
   }
 
   private toZone(z: MapZone, custom = false) {
@@ -441,10 +499,76 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     return `Private room ${n}`;
   }
 
+  // Moves a player into a room (or out of all of them); a locked room that just emptied opens.
+  private setZone(player: Player, next: string) {
+    const previous = player.zone;
+    player.zone = next;
+    if (previous && previous !== next) this.releaseIfEmpty(previous);
+  }
+
+  private mayEnter(client: Client, zoneId: string) {
+    const account = (client as Client<{ auth: Account }>).auth;
+    const locked = this.state.zones.get(zoneId)?.locked ?? false;
+    return !account || this.access.mayEnter(zoneId, locked, client.sessionId, account.role);
+  }
+
+  // The person is put back like at a wall, and the first try asks the people inside.
+  private refuseEntry(client: Client, player: Player, zoneId: string) {
+    client.send(MESSAGES.SNAP, { x: player.x, y: player.y });
+    if (!this.access.startKnock(zoneId, client.sessionId, Date.now())) return;
+    const knock: KnockPayload = { zoneId, knockerId: client.sessionId, name: player.name };
+    for (const other of this.clients) {
+      if (this.state.players.get(other.sessionId)?.zone === zoneId) {
+        other.send(MESSAGES.KNOCK, knock);
+      }
+    }
+    client.send(MESSAGES.KNOCK_RESULT, {
+      zoneId,
+      knockerId: client.sessionId,
+      result: "knocking",
+    } satisfies KnockResultPayload);
+    this.clock.setTimeout(() => {
+      if (this.access.knockingOn(client.sessionId) === zoneId) {
+        this.closeKnock(client.sessionId, zoneId, "timeout");
+      }
+    }, KNOCK_TIMEOUT_MS);
+  }
+
+  // Ends a knock and tells the knocker and the people inside; "allowed" lets them in.
+  private closeKnock(knockerId: string, zoneId: string, result: KnockOutcome) {
+    this.access.endKnock(knockerId);
+    if (result === "allowed") this.access.admit(zoneId, knockerId);
+    const message: KnockResultPayload = { zoneId, knockerId, result };
+    for (const client of this.clients) {
+      if (
+        client.sessionId === knockerId ||
+        this.state.players.get(client.sessionId)?.zone === zoneId
+      ) {
+        client.send(MESSAGES.KNOCK_RESULT, message);
+      }
+    }
+  }
+
+  // A room is no longer locked (unlocked, empty or gone): nobody has to wait or stays let in.
+  private openZone(zoneId: string) {
+    const zone = this.state.zones.get(zoneId);
+    if (zone) zone.locked = false;
+    for (const knocker of this.access.knockersOf(zoneId)) {
+      this.closeKnock(knocker, zoneId, "allowed");
+    }
+    this.access.reset(zoneId);
+  }
+
+  private releaseIfEmpty(zoneId: string) {
+    if (!this.state.zones.get(zoneId)?.locked) return;
+    for (const p of this.state.players.values()) if (p.zone === zoneId) return;
+    this.openZone(zoneId);
+  }
+
   // A room appeared or went away, so who stands in which room may have changed.
   private relocateAll() {
     const zones = this.zoneList();
-    for (const player of this.state.players.values()) player.zone = zoneAt(zones, player);
+    for (const player of this.state.players.values()) this.setZone(player, zoneAt(zones, player));
   }
 
   // Moves a player (onto a seat, or off it) and tells their own client, which would otherwise
@@ -452,7 +576,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private place(client: Client | undefined, player: Player, spot: Position, seat?: Seat) {
     player.x = spot.x;
     player.y = spot.y;
-    player.zone = zoneAt(this.zoneList(), spot);
+    this.setZone(player, zoneAt(this.zoneList(), spot));
     player.seat = seat?.id ?? "";
     player.facing = seat?.facing ?? "";
     client?.send(MESSAGES.SNAP, { x: spot.x, y: spot.y });
@@ -518,7 +642,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     player.userId = userId;
     player.name = name;
     player.look = encodeLook(look);
-    const spawn = resolveSpawn(lastX, lastY, this.grid);
+    let spawn = resolveSpawn(lastX, lastY, this.grid);
+    // Where they last stood may now be a locked room they cannot enter.
+    const room = zoneAt(this.zoneList(), spawn);
+    if (room && !this.mayEnter(client, room)) spawn = resolveSpawn(null, null, this.grid);
     player.x = spawn.x;
     player.y = spawn.y;
     player.zone = zoneAt(this.zoneList(), spawn);
@@ -529,6 +656,10 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   async onLeave(client: Client<{ auth: Account }>) {
     const player = this.state.players.get(client.sessionId);
     this.state.players.delete(client.sessionId);
+    const knocking = this.access.knockingOn(client.sessionId);
+    if (knocking) this.closeKnock(client.sessionId, knocking, "timeout");
+    this.access.forget(client.sessionId);
+    if (player?.zone) this.releaseIfEmpty(player.zone);
     this.lastRefresh.delete(client.sessionId);
     this.budgets.delete(client.sessionId);
     // Save where they would stand, not the chair (which is inside a wall as far as spawning goes).

@@ -175,6 +175,13 @@ export const MESSAGES = {
   // Request/response: draw a private room, or remove one (owners and admins).
   ADD_ZONE: "add-zone",
   REMOVE_ZONE: "remove-zone",
+  // Request/response: lock or unlock the room you stand in (the owner can from anywhere).
+  LOCK_ZONE: "lock-zone",
+  // Server to everyone in a locked room: someone is at the door. Answer with ANSWER_KNOCK.
+  KNOCK: "knock",
+  ANSWER_KNOCK: "answer-knock",
+  // Server to the knocker and to the people inside: how the knock stands.
+  KNOCK_RESULT: "knock-result",
 } as const;
 
 export interface VoiceToken {

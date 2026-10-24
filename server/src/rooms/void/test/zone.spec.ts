@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAddZone, parseRemoveZone } from "../handlers/zone.handler.js";
+import {
+  parseAddZone,
+  parseAnswerKnock,
+  parseLockZone,
+  parseRemoveZone,
+} from "../handlers/zone.handler.js";
 
 describe("parseAddZone", () => {
   it("accepts whole tile numbers", () => {
@@ -35,5 +40,26 @@ describe("parseRemoveZone", () => {
     expect(parseRemoveZone({ id: "z7" })).toBeNull();
     expect(parseRemoveZone({})).toBeNull();
     expect(parseRemoveZone(undefined)).toBeNull();
+  });
+});
+
+describe("parseLockZone", () => {
+  it("needs an id and a boolean", () => {
+    expect(parseLockZone({ id: "z1", locked: true })).toEqual({ id: "z1", locked: true });
+    expect(parseLockZone({ id: "z1", locked: "yes" })).toBeNull();
+    expect(parseLockZone({ locked: true })).toBeNull();
+    expect(parseLockZone(null)).toBeNull();
+  });
+});
+
+describe("parseAnswerKnock", () => {
+  it("needs the knocker and a boolean", () => {
+    expect(parseAnswerKnock({ knockerId: "abc", allow: false })).toEqual({
+      knockerId: "abc",
+      allow: false,
+    });
+    expect(parseAnswerKnock({ knockerId: "abc" })).toBeNull();
+    expect(parseAnswerKnock({ knockerId: 5, allow: true })).toBeNull();
+    expect(parseAnswerKnock("x")).toBeNull();
   });
 });

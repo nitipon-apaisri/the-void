@@ -17,6 +17,8 @@ export interface MapZone {
   height: number;
   /** Drawn by an owner or admin (and removable), as opposed to part of the template. */
   custom?: boolean;
+  /** Only people already inside, the owner and those let in may enter. */
+  locked?: boolean;
 }
 
 /** The id of the zone a point is in, or "" outside all of them. */
@@ -75,3 +77,37 @@ export function zoneError(
   );
   return overlaps ? "that overlaps another room" : undefined;
 }
+
+export interface LockZonePayload {
+  id: string;
+  locked: boolean;
+}
+
+/** Server to the people inside a locked room: someone wants in. */
+export interface KnockPayload {
+  zoneId: string;
+  /** The knocker's session id, to answer with. */
+  knockerId: string;
+  name: string;
+}
+
+export interface AnswerKnockPayload {
+  knockerId: string;
+  allow: boolean;
+}
+
+export type KnockOutcome = "knocking" | "allowed" | "denied" | "timeout";
+
+/** Sent to the knocker, and to the people inside so they can drop the prompt. */
+export interface KnockResultPayload {
+  zoneId: string;
+  knockerId: string;
+  result: KnockOutcome;
+}
+
+/** How long a knock waits for an answer, and how soon the same person may knock again. */
+export const KNOCK_TIMEOUT_MS = 30_000;
+export const KNOCK_COOLDOWN_MS = 4_000;
+
+/** The owner walks into any room; the rest need the room open or to be let in. */
+export const canEnterLockedZone = (role: SpaceRole) => role === "owner";

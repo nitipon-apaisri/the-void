@@ -1,5 +1,10 @@
 // shared
-import type { AddZonePayload, RemoveZonePayload } from "@void/shared";
+import type {
+  AddZonePayload,
+  AnswerKnockPayload,
+  LockZonePayload,
+  RemoveZonePayload,
+} from "@void/shared";
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,4 +21,20 @@ export function parseRemoveZone(payload: unknown): RemoveZonePayload | null {
   if (!isObject(payload)) return null;
   const { id } = payload;
   return typeof id === "string" && UUID.test(id) ? { id } : null;
+}
+
+export function parseLockZone(payload: unknown): LockZonePayload | null {
+  if (!isObject(payload)) return null;
+  const { id, locked } = payload;
+  return typeof id === "string" && id.length <= 64 && typeof locked === "boolean"
+    ? { id, locked }
+    : null;
+}
+
+export function parseAnswerKnock(payload: unknown): AnswerKnockPayload | null {
+  if (!isObject(payload)) return null;
+  const { knockerId, allow } = payload;
+  return typeof knockerId === "string" && knockerId.length <= 64 && typeof allow === "boolean"
+    ? { knockerId, allow }
+    : null;
 }

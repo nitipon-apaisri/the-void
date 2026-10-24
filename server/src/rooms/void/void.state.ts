@@ -33,6 +33,8 @@ export class Zone extends Schema {
   @type("number") height = 0;
   // Drawn by an owner or admin, so it can be removed.
   @type("boolean") custom = false;
+  // Only people inside, the owner and those let in may enter; the server enforces it on moves.
+  @type("boolean") locked = false;
 }
 
 export class VoidState extends Schema {
