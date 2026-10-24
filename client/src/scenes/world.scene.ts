@@ -7,6 +7,7 @@ import {
   mapName,
   TILE_SIZE,
   SEATS_LAYER,
+  ZONES_LAYER,
   SIT_RANGE,
   TABLES_LAYER,
   furnitureSeats,
@@ -69,6 +70,7 @@ import { createGrid, moveWithCollision, type CollisionGrid } from "../systems/co
 import { readDirection } from "../systems/controls";
 import { findPath, followPath } from "../systems/pathfinding";
 import { stepPosition } from "../systems/movement";
+import { audienceIds } from "../systems/audience";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
 import { audibleSpeakers } from "../systems/speaking";
@@ -121,6 +123,10 @@ export class WorldScene extends Phaser.Scene {
   private voicePanel!: VoicePanel;
   private voice?: VoiceConnection;
   private nearby: ReadonlySet<string> = new Set();
+  // Meeting rooms from the map, and which one each player stands in (the server's word).
+  private zoneNames = new Map<string, string>();
+  private zoneOf = new Map<string, string>();
+  private myZone = "";
   // Who LiveKit says is talking; shown only for people in hearing range (see showSpeaking).
   private speaking: ReadonlySet<string> = new Set();
   private selfSpeaking = false;
@@ -266,6 +272,7 @@ export class WorldScene extends Phaser.Scene {
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
     this.setUpSeats(map);
+    this.setUpZones(map);
     this.baseBlocked = [...this.grid.blocked];
     this.decorate = createDecoratePanel({
       onToggle: (open) => {
@@ -1118,11 +1125,13 @@ export class WorldScene extends Phaser.Scene {
           // The server knows where we last stood in this space; start there.
           this.me?.setPosition(p.x, p.y);
           this.route = [];
+          this.myZone = p.zone;
           return;
         }
         const sprite = this.spawnPlayer(p.x, p.y, p.name, p.look);
         sprite.setSeated(p.seat ? p.facing : undefined);
         if (p.seat) this.seatOf.set(p.id, p.seat);
+        this.zoneOf.set(p.id, p.zone);
         this.others.set(p.id, sprite);
         this.accounts.set(p.id, p.userId);
         this.refreshOnline();
@@ -1138,6 +1147,8 @@ export class WorldScene extends Phaser.Scene {
       connection.onPlayerMove((p) => {
         if (p.seat) this.seatOf.set(p.id, p.seat);
         else this.seatOf.delete(p.id);
+        if (p.id === connection.sessionId) this.enterZone(p.zone);
+        else this.zoneOf.set(p.id, p.zone);
         // The room stood us up (the chair was removed): forget the seat here too.
         if (p.id === connection.sessionId && this.mySeat && !p.seat) this.leaveSeat();
         const sprite = this.others.get(p.id);
@@ -1281,11 +1292,37 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateProximity(me: PlayerSprite) {
-    const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
-    this.nearby = nearbyIds(me, others, this.settings.proximityTiles * TILE_SIZE, this.nearby);
+    const others = [...this.others].map(([id, s]) => ({
+      id,
+      x: s.x,
+      y: s.y,
+      zone: this.zoneOf.get(id) ?? "",
+    }));
+    this.nearby = audienceIds(
+      { x: me.x, y: me.y, zone: this.myZone },
+      others,
+      this.settings.proximityTiles * TILE_SIZE,
+      this.nearby,
+    );
     this.voice?.setNearby(sortByDistance(me, others, this.nearby));
     // Walking out of range stops the ring even if they keep talking.
     this.showSpeaking();
+  }
+
+  // Meeting rooms, from the map's "zones" layer; only their names matter here, since the server
+  // says who is inside which.
+  private setUpZones(map: Phaser.Tilemaps.Tilemap) {
+    this.zoneNames = new Map();
+    for (const o of map.getObjectLayer(ZONES_LAYER)?.objects ?? []) {
+      this.zoneNames.set(`z${o.id}`, o.name || "Meeting room");
+    }
+  }
+
+  private enterZone(zone: string) {
+    if (zone === this.myZone) return;
+    this.myZone = zone;
+    const name = this.zoneNames.get(zone);
+    this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
   }
 
   // Places to sit, from the map's "seats" layer. Desk chairs have no art; the others are tiles.
@@ -1371,6 +1408,7 @@ export class WorldScene extends Phaser.Scene {
     this.others.get(id)?.destroy();
     this.others.delete(id);
     this.accounts.delete(id);
+    this.zoneOf.delete(id);
     this.refreshOnline();
   }
 

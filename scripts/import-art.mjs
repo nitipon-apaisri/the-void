@@ -203,7 +203,7 @@ const officeRooms = {
 };
 
 const officePlan = (ctx) => {
-  const { size, cols, rows, carpet, hwall, vwall } = ctx;
+  const { size, cols, rows, carpet, hwall, vwall, zone } = ctx;
   const kinds = OFFICE_KINDS[size];
   const nr = kinds.length;
   const nc = kinds[0].length;
@@ -248,6 +248,10 @@ const officePlan = (ctx) => {
   }
 
   for (const room of rooms.flat()) officeRooms[room.kind]({ ...ctx, ...room });
+  // Each meeting room is a walled cell with doorways, so the walls are its edges.
+  let n = 0;
+  for (const room of rooms.flat())
+    if (room.kind === "meeting") zone(`Meeting room ${++n}`, room.x0, room.y0, room.x1, room.y1);
 };
 
 // Open plan: one big light room with tidy desk blocks, glass-free meeting rooms and a lounge.
@@ -258,7 +262,20 @@ const OPEN_PLAN = {
   medium: { meetings: 2, deskRows: 4, loungeCols: 2, loungeRows: 2, tableCols: 2 },
   large: { meetings: 3, deskRows: 6, loungeCols: 3, loungeRows: 4, tableCols: 3 },
 };
-const openPlan = ({ size, cols, rows, W, carpet, hwall, vwall, desks, meeting, lounge, plant }) => {
+const openPlan = ({
+  size,
+  cols,
+  rows,
+  W,
+  carpet,
+  hwall,
+  vwall,
+  desks,
+  meeting,
+  lounge,
+  plant,
+  zone: markZone,
+}) => {
   const cfg = OPEN_PLAN[size];
   W.row = 2;
   // The meeting rooms fill a block on the right from the top wall down to row 21.
@@ -281,6 +298,8 @@ const openPlan = ({ size, cols, rows, W, carpet, hwall, vwall, desks, meeting, l
   }
   hwall(start, cols - 1, 21);
   for (const k of range(cfg.meetings)) meeting(zone + 3 + 12 * k, 8);
+  // The block is walled in, with doorways at the bottom, so it is one private room.
+  markZone(cfg.meetings === 1 ? "Meeting room" : "Meeting rooms", zone + 1, 2, cols - 2, 20);
 
   // Desk blocks, with an aisle through the middle of the left side.
   const ys = range(cfg.deskRows).map((k) => 5 + 7 * k);
@@ -450,6 +469,9 @@ const build = (plan, size) => {
   // Places you can sit (the SEATS_LAYER in @void/shared): a point in pixels and the way you face.
   // A desk chair is drawn by the client, lifted so it tucks under the desk, so it has no tiles.
   const seats = [];
+  // Private rooms (the ZONES_LAYER in @void/shared): rectangles in tiles, inside the walls.
+  const zones = [];
+  const zone = (name, x0, y0, x1, y1) => zones.push({ name, x0, y0, x1, y1 });
   const SEAT_LIFT = 28;
   const stampDesk = (x, y) => {
     tables.push({ x: x * TILE, y: y * TILE, width: 4 * TILE, height: 5 * TILE });
@@ -511,6 +533,7 @@ const build = (plan, size) => {
     lounge,
     plant,
     tall,
+    zone,
   };
   api.fillOutside = (x0, y0, x1, y1) => {
     for (let y = 0; y < ROWS; y++)
@@ -539,8 +562,8 @@ const build = (plan, size) => {
     type: "map",
     version: "1.10",
     tiledversion: "1.10.2",
-    nextlayerid: 8,
-    nextobjectid: tables.length + seats.length + 1,
+    nextlayerid: 9,
+    nextobjectid: tables.length + seats.length + zones.length + 1,
     width: COLS,
     height: ROWS,
     tilewidth: TILE,
@@ -592,6 +615,27 @@ const build = (plan, size) => {
             { name: "facing", type: "string", value: s.facing },
             ...(s.art ? [{ name: "art", type: "string", value: s.art }] : []),
           ],
+        })),
+      },
+      {
+        id: 8,
+        name: "zones",
+        type: "objectgroup",
+        draworder: "topdown",
+        opacity: 1,
+        visible: false,
+        x: 0,
+        y: 0,
+        objects: zones.map((z, i) => ({
+          id: tables.length + seats.length + i + 1,
+          name: z.name,
+          type: "zone",
+          rotation: 0,
+          visible: true,
+          x: z.x0 * TILE,
+          y: z.y0 * TILE,
+          width: (z.x1 - z.x0 + 1) * TILE,
+          height: (z.y1 - z.y0 + 1) * TILE,
         })),
       },
     ],

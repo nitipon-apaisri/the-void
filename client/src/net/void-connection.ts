@@ -34,6 +34,8 @@ export interface PlayerSnapshot extends Position {
   /** The seat they are on ("" when standing) and the way they face there. */
   seat: string;
   facing: string;
+  /** The meeting room they stand in ("" outside all of them); only the server sets it. */
+  zone: string;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -109,6 +111,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     y: p.y,
     seat: p.seat,
     facing: p.facing,
+    zone: p.zone,
   });
 
   return {

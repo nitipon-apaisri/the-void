@@ -10,6 +10,8 @@ export class Player extends Schema {
   // The seat this player sits on ("" when standing) and the way they face there.
   @type("string") seat = "";
   @type("string") facing = "";
+  // The id of the meeting room they stand in ("" outside all of them); set by the server only.
+  @type("string") zone = "";
 }
 
 export class TableClaim extends Schema {

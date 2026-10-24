@@ -20,7 +20,7 @@ import { mountAuthRoutes } from "./routes/auth.routes.js";
 import { mountInviteRoutes } from "./routes/invite.routes.js";
 import { mountSpaceRoutes } from "./routes/space.routes.js";
 import { createAuthService } from "./services/auth.service.js";
-import { loadCollisionGrid, loadSeats, loadTables } from "./services/map.service.js";
+import { loadCollisionGrid, loadSeats, loadTables, loadZones } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
 import { createInviteService } from "./services/invite.service.js";
 import { createMemberService } from "./services/member.service.js";
@@ -66,7 +66,12 @@ const maps: SpaceMaps = Object.fromEntries(
       const file = path.join(env.mapsDir, `${name}.tmj`);
       return [
         name,
-        { grid: loadCollisionGrid(file, size), tables: loadTables(file), seats: loadSeats(file) },
+        {
+          grid: loadCollisionGrid(file, size),
+          tables: loadTables(file),
+          seats: loadSeats(file),
+          zones: loadZones(file),
+        },
       ];
     }),
   ),

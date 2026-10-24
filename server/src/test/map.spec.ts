@@ -10,7 +10,7 @@ import {
   SPACE_TEMPLATES,
 } from "@void/shared";
 
-import { parseCollisionGrid } from "../services/map.service.js";
+import { parseCollisionGrid, parseZones } from "../services/map.service.js";
 
 const { cols: MAP_COLS, rows: MAP_ROWS } = SPACE_SIZE_DIMENSIONS.medium;
 const map = (data: number[], extra: object = {}) => ({
@@ -55,4 +55,47 @@ describe("parseCollisionGrid", () => {
     const spawn = findSpawn(grid, PLAYER_RADIUS);
     expect(collidesCircle(grid, spawn.x, spawn.y, PLAYER_RADIUS)).toBe(false);
   });
+});
+
+describe("parseZones", () => {
+  const layer = (objects: object[]) => ({ layers: [{ name: "zones", objects }] });
+
+  it("reads the meeting rooms, with ids that cannot clash with desks or chairs", () => {
+    const zones = parseZones(
+      layer([{ id: 7, name: "Meeting room 1", x: 64, y: 64, width: 320, height: 192 }]),
+    );
+    expect(zones).toEqual([
+      { id: "z7", name: "Meeting room 1", x: 64, y: 64, width: 320, height: 192 },
+    ]);
+  });
+
+  it("skips objects that are not rectangles and names unnamed rooms", () => {
+    const zones = parseZones(
+      layer([
+        { id: 1, x: 0, y: 0, width: "wide", height: 10 },
+        { id: 2, x: 0, y: 0, width: 10, height: 10 },
+      ]),
+    );
+    expect(zones.map((z) => [z.id, z.name])).toEqual([["z2", "Room 2"]]);
+  });
+
+  it("is empty when the map has no zones layer", () => {
+    expect(parseZones({ layers: [] })).toEqual([]);
+    expect(parseZones(undefined)).toEqual([]);
+  });
+
+  it.each(SPACE_TEMPLATES.flatMap((t) => SPACE_SIZES.map((s) => [t, s] as const)))(
+    "the %s map at %s size has its rooms inside the map",
+    (template, size) => {
+      const file = new URL(
+        `../../../client/src/assets/maps/${mapName(template, size)}.tmj`,
+        import.meta.url,
+      );
+      const { cols, rows } = SPACE_SIZE_DIMENSIONS[size];
+      for (const z of parseZones(JSON.parse(readFileSync(file, "utf8")))) {
+        expect(z.x + z.width).toBeLessThanOrEqual(cols * 32);
+        expect(z.y + z.height).toBeLessThanOrEqual(rows * 32);
+      }
+    },
+  );
 });

@@ -25,6 +25,8 @@ import {
   furnitureSeats,
   nearestFreeSeat,
   type MapTable,
+  type MapZone,
+  zoneAt,
   type Position,
   type Seat,
   type WavedPayload,
@@ -50,6 +52,7 @@ interface SpaceMap {
   grid: CollisionGrid;
   tables: MapTable[];
   seats: Seat[];
+  zones: MapZone[];
 }
 /** Keyed by `mapName(template, size)`. */
 export type SpaceMaps = Record<string, SpaceMap>;
@@ -284,6 +287,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       player.x = pos.x;
       player.y = pos.y;
+      player.zone = zoneAt(this.map.zones, pos);
     });
     // Removals and role changes happen over HTTP; this is how the people already in hear of them.
     await this.presence.subscribe(memberChannel(this.spaceId), this.onMemberEvent);
@@ -346,6 +350,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private place(client: Client | undefined, player: Player, spot: Position, seat?: Seat) {
     player.x = spot.x;
     player.y = spot.y;
+    player.zone = zoneAt(this.map.zones, spot);
     player.seat = seat?.id ?? "";
     player.facing = seat?.facing ?? "";
     client?.send(MESSAGES.SNAP, { x: spot.x, y: spot.y });
@@ -414,6 +419,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     const spawn = resolveSpawn(lastX, lastY, this.grid);
     player.x = spawn.x;
     player.y = spawn.y;
+    player.zone = zoneAt(this.map.zones, spawn);
     this.state.players.set(client.sessionId, player);
     this.budgets.set(client.sessionId, new MoveBudget(Date.now()));
   }

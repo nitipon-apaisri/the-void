@@ -9,7 +9,12 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { mapName, ROOM_NAME, SPACE_SIZES, SPACE_TEMPLATES, DEFAULT_LOOK } from "@void/shared";
 
 import { VoidRoom, type SpaceMaps } from "../../server/src/rooms/void/void.room.js";
-import { loadCollisionGrid, loadSeats, loadTables } from "../../server/src/services/map.service.js";
+import {
+  loadCollisionGrid,
+  loadSeats,
+  loadTables,
+  loadZones,
+} from "../../server/src/services/map.service.js";
 import type { AuthService } from "../../server/src/services/auth.service.js";
 import type { SpaceRepository } from "../../server/src/repositories/space.repository.js";
 import type { UserRecord, UserRepository } from "../../server/src/repositories/user.repository.js";
@@ -30,6 +35,7 @@ for (const t of SPACE_TEMPLATES) {
       grid: loadCollisionGrid(file, s),
       tables: loadTables(file),
       seats: loadSeats(file),
+      zones: loadZones(file),
     };
   }
 }

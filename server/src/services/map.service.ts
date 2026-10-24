@@ -9,8 +9,10 @@ import {
   SEATS_LAYER,
   TABLES_LAYER,
   TILE_SIZE,
+  ZONES_LAYER,
   type CollisionGrid,
   type MapTable,
+  type MapZone,
   type Seat,
   type SpaceSize,
 } from "@void/shared";
@@ -101,4 +103,34 @@ export function parseSeats(tmj: unknown): Seat[] {
 
 export function loadSeats(file: string | URL): Seat[] {
   return parseSeats(JSON.parse(readFileSync(file, "utf8")));
+}
+
+/** The meeting rooms from the map's "zones" layer. A map without one has none. */
+export function parseZones(tmj: unknown): MapZone[] {
+  const layers = (tmj as { layers?: unknown })?.layers;
+  const layer = (Array.isArray(layers) ? (layers as TiledLayer[]) : []).find(
+    (l) => l.name === ZONES_LAYER,
+  );
+  const objects = Array.isArray((layer as { objects?: unknown })?.objects)
+    ? ((layer as { objects: unknown[] }).objects as Record<string, unknown>[])
+    : [];
+  const zones: MapZone[] = [];
+  for (const o of objects) {
+    const { id, name, x, y, width, height } = o;
+    if (typeof id !== "number" || !Number.isInteger(id)) continue;
+    if (![x, y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))) continue;
+    zones.push({
+      id: `z${id}`,
+      name: typeof name === "string" && name ? name : `Room ${id}`,
+      x: x as number,
+      y: y as number,
+      width: width as number,
+      height: height as number,
+    });
+  }
+  return zones;
+}
+
+export function loadZones(file: string | URL): MapZone[] {
+  return parseZones(JSON.parse(readFileSync(file, "utf8")));
 }

@@ -2,6 +2,7 @@ export const ROOM_NAME = "void";
 export * from "./furniture.js";
 export * from "./art-catalog.js";
 export * from "./seat.js";
+export * from "./zone.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
