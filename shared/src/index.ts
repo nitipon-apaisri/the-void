@@ -172,6 +172,9 @@ export const MESSAGES = {
   // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
   SIT: "sit",
   STAND: "stand",
+  // Request/response: draw a private room, or remove one (owners and admins).
+  ADD_ZONE: "add-zone",
+  REMOVE_ZONE: "remove-zone",
 } as const;
 
 export interface VoiceToken {

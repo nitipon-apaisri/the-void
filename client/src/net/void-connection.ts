@@ -13,6 +13,9 @@ import {
   type SitPayload,
   type PlaceFurniturePayload,
   type RemoveFurniturePayload,
+  type AddZonePayload,
+  type MapZone,
+  type RemoveZonePayload,
   type WavedPayload,
   type Look,
   type Position,
@@ -56,6 +59,11 @@ export interface VoidConnection {
   clearFurniture(): Promise<void>;
   /** Fires with every placed piece whenever one is added or removed. */
   onFurniture(cb: (pieces: PlacedFurniture[]) => void): void;
+  /** Owners and admins only. Rejects with the server's reason (overlap, too small, too many). */
+  addZone(rect: AddZonePayload): Promise<void>;
+  removeZone(id: string): Promise<void>;
+  /** Fires with every private room (the template's and the drawn ones) whenever one changes. */
+  onZones(cb: (zones: MapZone[]) => void): void;
   /** Sit on a seat within reach; the room snaps us onto it. Rejects with its reason. */
   sit(seatId: string): Promise<void>;
   stand(): Promise<void>;
@@ -160,6 +168,33 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
       });
       furniture.onRemove((_: any, id: string) => {
         pieces.delete(id);
+        emit();
+      });
+    },
+    addZone: async (rect) => {
+      await room.request(MESSAGES.ADD_ZONE, rect);
+    },
+    removeZone: async (id) => {
+      await room.request(MESSAGES.REMOVE_ZONE, { id } satisfies RemoveZonePayload);
+    },
+    onZones: (cb) => {
+      const zones = new Map<string, MapZone>();
+      const emit = () => cb([...zones.values()]);
+      const state = $(room.state as any).zones;
+      state.onAdd((z: any, id: string) => {
+        zones.set(id, {
+          id,
+          name: z.name,
+          x: z.x,
+          y: z.y,
+          width: z.width,
+          height: z.height,
+          custom: z.custom,
+        });
+        emit();
+      });
+      state.onRemove((_: any, id: string) => {
+        zones.delete(id);
         emit();
       });
     },

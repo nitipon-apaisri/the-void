@@ -27,6 +27,11 @@ import {
   type MapTable,
   type MapZone,
   zoneAt,
+  zoneError,
+  canManageZones,
+  MAX_CUSTOM_ZONES,
+  SPACE_SIZE_DIMENSIONS,
+  TILE_SIZE,
   type Position,
   type Seat,
   type WavedPayload,
@@ -35,6 +40,7 @@ import {
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
 import type { FurnitureRepository } from "../../repositories/furniture.repository.js";
+import type { ZoneRepository } from "../../repositories/zone.repository.js";
 import type { TableRepository } from "../../repositories/table.repository.js";
 import type { UserRepository } from "../../repositories/user.repository.js";
 import type { AuthService } from "../../services/auth.service.js";
@@ -45,7 +51,8 @@ import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
-import { Furniture, Player, TableClaim, VoidState } from "./void.state.js";
+import { parseAddZone, parseRemoveZone } from "./handlers/zone.handler.js";
+import { Furniture, Player, TableClaim, VoidState, Zone } from "./void.state.js";
 
 /** What the server reads from a template's map file. */
 interface SpaceMap {
@@ -64,6 +71,7 @@ interface VoidRoomOptions {
   maps: SpaceMaps;
   claims: TableRepository;
   furniture: FurnitureRepository;
+  zones: ZoneRepository;
   voiceTokens?: VoiceTokenService;
 }
 
@@ -119,6 +127,46 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!this.map.tables.some((t) => t.id === claim.tableId)) continue;
       this.state.tables.set(claim.tableId, this.toClaim(claim.userId, claim.name));
     }
+    for (const z of this.map.zones) this.state.zones.set(z.id, this.toZone(z));
+    // Rooms drawn in this space, read by the room's own size so one that no longer fits is dropped.
+    const dims = SPACE_SIZE_DIMENSIONS[layout?.size ?? DEFAULT_SIZE];
+    for (const z of await options.zones.list(this.spaceId)) {
+      if (zoneError(z, this.zoneList(), dims.cols, dims.rows)) continue;
+      this.state.zones.set(z.id, this.toZone(this.fromStored(z), true));
+    }
+    this.answer(MESSAGES.ADD_ZONE, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseAddZone(payload);
+      if (!account || !request) throw new Error("invalid request");
+      if (!canManageZones(account.role)) throw new Error("only owners and admins can draw rooms");
+      const custom = [...this.state.zones.values()].filter((z) => z.custom).length;
+      if (custom >= MAX_CUSTOM_ZONES) throw new Error("the space has too many private rooms");
+      const error = zoneError(request, this.zoneList(), dims.cols, dims.rows);
+      if (error) throw new Error(error);
+      const name = this.nextZoneName();
+      const id = await options.zones.add(this.spaceId, name, request, account.userId);
+      // Someone else may have drawn a room here while the database was working.
+      const late = zoneError(request, this.zoneList(), dims.cols, dims.rows);
+      if (late) {
+        await options.zones.remove(this.spaceId, id);
+        throw new Error(late);
+      }
+      this.state.zones.set(id, this.toZone(this.fromStored({ id, name, ...request }), true));
+      this.relocateAll();
+      return true;
+    });
+    this.answer(MESSAGES.REMOVE_ZONE, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseRemoveZone(payload);
+      if (!account || !request) throw new Error("invalid request");
+      if (!canManageZones(account.role)) throw new Error("only owners and admins can remove rooms");
+      // The template's rooms are part of the map; only the ones drawn here can go.
+      if (!this.state.zones.get(request.id)?.custom) throw new Error("that room is gone");
+      await options.zones.remove(this.spaceId, request.id);
+      this.state.zones.delete(request.id);
+      this.relocateAll();
+      return true;
+    });
     // Only joined players can ask, and the identity is their session id, never client-supplied.
     this.answer(MESSAGES.VOICE_TOKEN, async (client) => {
       const player = this.state.players.get(client.sessionId);
@@ -287,7 +335,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       player.x = pos.x;
       player.y = pos.y;
-      player.zone = zoneAt(this.map.zones, pos);
+      player.zone = zoneAt(this.zoneList(), pos);
     });
     // Removals and role changes happen over HTTP; this is how the people already in hear of them.
     await this.presence.subscribe(memberChannel(this.spaceId), this.onMemberEvent);
@@ -345,12 +393,66 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     return [...this.map.seats, ...furnitureSeats(pieces)];
   }
 
+  private zoneList(): MapZone[] {
+    return [...this.state.zones.entries()].map(([id, z]) => ({
+      id,
+      name: z.name,
+      x: z.x,
+      y: z.y,
+      width: z.width,
+      height: z.height,
+    }));
+  }
+
+  private toZone(z: MapZone, custom = false) {
+    const zone = new Zone();
+    zone.name = z.name;
+    zone.x = z.x;
+    zone.y = z.y;
+    zone.width = z.width;
+    zone.height = z.height;
+    zone.custom = custom;
+    return zone;
+  }
+
+  private fromStored(z: {
+    id: string;
+    name: string;
+    col: number;
+    row: number;
+    cols: number;
+    rows: number;
+  }): MapZone {
+    return {
+      id: z.id,
+      name: z.name,
+      x: z.col * TILE_SIZE,
+      y: z.row * TILE_SIZE,
+      width: z.cols * TILE_SIZE,
+      height: z.rows * TILE_SIZE,
+    };
+  }
+
+  // "Private room 1", "Private room 2", ... the lowest number not in use.
+  private nextZoneName() {
+    const used = new Set([...this.state.zones.values()].map((z) => z.name));
+    let n = 1;
+    while (used.has(`Private room ${n}`)) n++;
+    return `Private room ${n}`;
+  }
+
+  // A room appeared or went away, so who stands in which room may have changed.
+  private relocateAll() {
+    const zones = this.zoneList();
+    for (const player of this.state.players.values()) player.zone = zoneAt(zones, player);
+  }
+
   // Moves a player (onto a seat, or off it) and tells their own client, which would otherwise
   // keep its old position.
   private place(client: Client | undefined, player: Player, spot: Position, seat?: Seat) {
     player.x = spot.x;
     player.y = spot.y;
-    player.zone = zoneAt(this.map.zones, spot);
+    player.zone = zoneAt(this.zoneList(), spot);
     player.seat = seat?.id ?? "";
     player.facing = seat?.facing ?? "";
     client?.send(MESSAGES.SNAP, { x: spot.x, y: spot.y });
@@ -419,7 +521,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     const spawn = resolveSpawn(lastX, lastY, this.grid);
     player.x = spawn.x;
     player.y = spawn.y;
-    player.zone = zoneAt(this.map.zones, spawn);
+    player.zone = zoneAt(this.zoneList(), spawn);
     this.state.players.set(client.sessionId, player);
     this.budgets.set(client.sessionId, new MoveBudget(Date.now()));
   }

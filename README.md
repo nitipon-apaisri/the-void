@@ -6,7 +6,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 
 - **Accounts**: sign up with an email and password, edit your name and character, change email or password, sign out other devices, delete your account.
 - **Spaces**: each space is its own room with its own members and its own voice. After signing in you choose to join a space (one you are in, or a new one with a short code) or to create one; the last one opens by itself. A new space starts from a template (Classic office, Open plan, Studio or an Empty room) at a size (small, medium or large).
-- **Invite links and codes**: owners and admins share a link or a short code, optionally needing their approval; pending people appear in the People panel. Owners hand out roles, admins and owners remove or ban people (a ban also blocks their links and codes until lifted), and anyone can leave.
+- **Invite links and codes**: owners and admins share a link or a short code, optionally needing their approval; pending people appear in the People panel. Owners and admins can draw private rooms on the map. Owners hand out roles, admins and owners remove or ban people (a ban also blocks their links and codes until lifted), and anyone can leave.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
 - **Sitting**: walk up to a chair and stop to sit down; move or click to stand again.
@@ -14,7 +14,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
-- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting. A ring at someone's feet and a highlight on their video show who is talking. Meeting rooms are private: inside one, everyone in it hears and sees each other wherever they stand, and nobody outside does.
+- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles; the range is a setting. A ring at someone's feet and a highlight on their video show who is talking. Private rooms: inside one, everyone in it hears and sees each other wherever they stand, and nobody outside does. The office and open plan have meeting rooms, and owners and admins can draw their own in any space.
 - **Character customize**: five layered parts (skin, eyes, outfit, hair, extra), each with a style and a colour.
 - **Settings**: range, mic, camera and speaker choice, volume, movement keys, zoom, frame rate cap.
 

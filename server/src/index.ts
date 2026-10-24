@@ -14,6 +14,7 @@ import { createInviteRepository } from "./repositories/invite.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
 import { createFurnitureRepository } from "./repositories/furniture.repository.js";
 import { createTableRepository } from "./repositories/table.repository.js";
+import { createZoneRepository } from "./repositories/zone.repository.js";
 import { createUserRepository } from "./repositories/user.repository.js";
 import { VoidRoom, type SpaceMaps } from "./rooms/void/void.room.js";
 import { mountAuthRoutes } from "./routes/auth.routes.js";
@@ -111,6 +112,7 @@ gameServer
     maps,
     claims,
     furniture,
+    zones: createZoneRepository(pool),
   })
   .filterBy(["spaceId"]);
 gameServer.onShutdown(() => pool.end());

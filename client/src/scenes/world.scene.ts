@@ -7,7 +7,9 @@ import {
   mapName,
   TILE_SIZE,
   SEATS_LAYER,
-  ZONES_LAYER,
+  zoneError,
+  type AddZonePayload,
+  type MapZone,
   SIT_RANGE,
   TABLES_LAYER,
   furnitureSeats,
@@ -124,7 +126,10 @@ export class WorldScene extends Phaser.Scene {
   private voice?: VoiceConnection;
   private nearby: ReadonlySet<string> = new Set();
   // Meeting rooms from the map, and which one each player stands in (the server's word).
-  private zoneNames = new Map<string, string>();
+  private zones = new Map<string, MapZone>();
+  private zoneArt: Phaser.GameObjects.GameObject[] = [];
+  // The first corner of a room being drawn, in tiles.
+  private zoneAnchor?: { col: number; row: number };
   private zoneOf = new Map<string, string>();
   private myZone = "";
   // Who LiveKit says is talking; shown only for people in hearing range (see showSpeaking).
@@ -272,7 +277,6 @@ export class WorldScene extends Phaser.Scene {
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
     this.setUpSeats(map);
-    this.setUpZones(map);
     this.baseBlocked = [...this.grid.blocked];
     this.decorate = createDecoratePanel({
       onToggle: (open) => {
@@ -857,6 +861,7 @@ export class WorldScene extends Phaser.Scene {
     this.ghost?.destroy();
     this.hoverBox?.destroy();
     this.ghost = this.hoverBox = this.ghostSpot = undefined;
+    this.zoneAnchor = undefined;
     if (tool?.kind === "item") {
       const { item } = tool;
       this.ghost = this.add
@@ -865,7 +870,7 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(30)
         .setAlpha(0.8)
         .setVisible(false);
-    } else if (tool?.kind === "remove") {
+    } else if (tool?.kind === "remove" || tool?.kind === "unzone" || tool?.kind === "zone") {
       this.hoverBox = this.add
         .rectangle(0, 0, 0, 0)
         .setOrigin(0)
@@ -873,6 +878,12 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(30)
         .setVisible(false);
     }
+  }
+
+  private customZoneAt(x: number, y: number) {
+    return [...this.zones.values()].find(
+      (z) => z.custom && x >= z.x && x < z.x + z.width && y >= z.y && y < z.y + z.height,
+    );
   }
 
   private pieceAt(x: number, y: number) {
@@ -905,6 +916,32 @@ export class WorldScene extends Phaser.Scene {
       this.ghost.setPosition(col * TILE_SIZE, row * TILE_SIZE).setVisible(true);
       if (bad) this.ghost.setTint(0xff6b81);
       else this.ghost.clearTint();
+    } else if (tool?.kind === "zone" && this.hoverBox) {
+      const tile = {
+        col: Math.floor(pointer.worldX / TILE_SIZE),
+        row: Math.floor(pointer.worldY / TILE_SIZE),
+      };
+      // Before the first click it marks the tile; after it, the room that would be drawn.
+      const rect = this.zoneAnchor
+        ? this.zoneRect(this.zoneAnchor, tile)
+        : { ...tile, cols: 1, rows: 1 };
+      const bad = this.zoneAnchor && this.zoneError(rect);
+      this.hoverBox
+        .setPosition(rect.col * TILE_SIZE, rect.row * TILE_SIZE)
+        .setSize(rect.cols * TILE_SIZE, rect.rows * TILE_SIZE)
+        .setStrokeStyle(2, bad ? 0xff6b81 : 0x5eead4)
+        .setVisible(true);
+    } else if (tool?.kind === "unzone" && this.hoverBox) {
+      const zone = this.customZoneAt(pointer.worldX, pointer.worldY);
+      if (!zone) {
+        this.hoverBox.setVisible(false);
+        return;
+      }
+      this.hoverBox
+        .setPosition(zone.x, zone.y)
+        .setSize(zone.width, zone.height)
+        .setStrokeStyle(2, 0xff6b81)
+        .setVisible(true);
     } else if (tool?.kind === "remove" && this.hoverBox) {
       const piece = this.pieceAt(pointer.worldX, pointer.worldY);
       const item = piece && findFurniture(piece.itemId);
@@ -933,6 +970,26 @@ export class WorldScene extends Phaser.Scene {
           return;
         }
         await connection.placeFurniture({ itemId: tool.item.id, ...spot });
+      } else if (tool.kind === "zone") {
+        const tile = {
+          col: Math.floor(pointer.worldX / TILE_SIZE),
+          row: Math.floor(pointer.worldY / TILE_SIZE),
+        };
+        if (!this.zoneAnchor) {
+          this.zoneAnchor = tile;
+          return;
+        }
+        const rect = this.zoneRect(this.zoneAnchor, tile);
+        const error = this.zoneError(rect);
+        if (error) {
+          this.toast.show(error, "error", 2500);
+          return;
+        }
+        this.zoneAnchor = undefined;
+        await connection.addZone(rect);
+      } else if (tool.kind === "unzone") {
+        const zone = this.customZoneAt(pointer.worldX, pointer.worldY);
+        if (zone) await connection.removeZone(zone.id);
       } else {
         const piece = this.pieceAt(pointer.worldX, pointer.worldY);
         if (piece) await connection.removeFurniture(piece.id);
@@ -1184,6 +1241,7 @@ export class WorldScene extends Phaser.Scene {
       });
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));
+      connection.onZones((zones) => this.syncZones(zones));
       this.decorate?.setAvailable(true, this.space ? canEmptySpace(this.space.role) : false);
       void this.startVoice(connection);
       connection.onDrop(() => {
@@ -1309,20 +1367,53 @@ export class WorldScene extends Phaser.Scene {
     this.showSpeaking();
   }
 
-  // Meeting rooms, from the map's "zones" layer; only their names matter here, since the server
-  // says who is inside which.
-  private setUpZones(map: Phaser.Tilemaps.Tilemap) {
-    this.zoneNames = new Map();
-    for (const o of map.getObjectLayer(ZONES_LAYER)?.objects ?? []) {
-      this.zoneNames.set(`z${o.id}`, o.name || "Meeting room");
+  // Private rooms (the template's and the drawn ones) as the server has them: a faint tint and a
+  // name, since a drawn room has no walls to show where it ends.
+  private syncZones(list: MapZone[]) {
+    for (const art of this.zoneArt) art.destroy();
+    this.zoneArt = [];
+    this.zones = new Map(list.map((z) => [z.id, z]));
+    for (const z of list) {
+      this.zoneArt.push(
+        this.add
+          .rectangle(z.x, z.y, z.width, z.height, 0x8b93ff, 0.07)
+          .setOrigin(0)
+          .setStrokeStyle(2, 0x8b93ff, 0.45)
+          .setDepth(1),
+        this.add
+          .text(z.x + 8, z.y + 6, `${z.name} (private)`, {
+            fontFamily: "sans-serif",
+            fontSize: "12px",
+            color: "#cfd3ff",
+          })
+          .setAlpha(0.8)
+          .setDepth(1),
+      );
     }
   }
 
   private enterZone(zone: string) {
     if (zone === this.myZone) return;
     this.myZone = zone;
-    const name = this.zoneNames.get(zone);
+    const name = this.zones.get(zone)?.name;
     this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
+  }
+
+  // The rectangle between two corner tiles, as a room to add.
+  private zoneRect(
+    a: { col: number; row: number },
+    b: { col: number; row: number },
+  ): AddZonePayload {
+    return {
+      col: Math.min(a.col, b.col),
+      row: Math.min(a.row, b.row),
+      cols: Math.abs(a.col - b.col) + 1,
+      rows: Math.abs(a.row - b.row) + 1,
+    };
+  }
+
+  private zoneError(rect: AddZonePayload) {
+    return zoneError(rect, [...this.zones.values()], this.grid.cols, this.grid.rows);
   }
 
   // Places to sit, from the map's "seats" layer. Desk chairs have no art; the others are tiles.

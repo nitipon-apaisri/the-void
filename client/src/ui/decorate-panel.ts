@@ -9,7 +9,12 @@ import { applyTheme } from "./theme";
 // utils
 import { injectStyle } from "../utils/dom";
 
-export type DecorateTool = { kind: "item"; item: FurnitureItem } | { kind: "remove" };
+export type DecorateTool =
+  | { kind: "item"; item: FurnitureItem }
+  | { kind: "remove" }
+  // Private rooms: two clicks draw one, a click on a drawn one removes it.
+  | { kind: "zone" }
+  | { kind: "unzone" };
 
 export interface DecoratePanel {
   /** Shows or hides the launcher (hiding closes the panel); `canEmpty` shows the empty-space button. */
@@ -89,26 +94,38 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   panel.innerHTML =
     "<h2>Decorate</h2><p>Pick a group, then a piece, then click the map. Esc to finish.</p>";
   const removeButton = document.createElement("button");
+  const toolButtons: HTMLButtonElement[] = [removeButton];
   // Groups of pieces, then the pieces of one group; picking one hands the scene a tool.
   const picker = createArtPicker((item) => {
-    removeButton.setAttribute("aria-pressed", "false");
+    for (const b of toolButtons) b.setAttribute("aria-pressed", "false");
     actions.onTool(item && { kind: "item", item });
   });
   panel.append(picker.element);
   const grid = document.createElement("div");
   grid.className = "void-decor-grid void-decor-footer";
   panel.append(grid);
-  removeButton.type = "button";
-  removeButton.className = "void-decor-remove";
-  removeButton.textContent = "Remove pieces";
-  removeButton.setAttribute("aria-pressed", "false");
-  removeButton.addEventListener("click", () => {
-    const on = removeButton.getAttribute("aria-pressed") !== "true";
-    picker.clear();
-    removeButton.setAttribute("aria-pressed", String(on));
-    actions.onTool(on ? { kind: "remove" } : undefined);
-  });
-  grid.append(removeButton);
+  // A button that switches one non-catalogue tool on or off; only one tool is on at a time.
+  const addTool = (button: HTMLButtonElement, label: string, tool: DecorateTool) => {
+    button.type = "button";
+    button.className = "void-decor-remove";
+    button.textContent = label;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      const on = button.getAttribute("aria-pressed") !== "true";
+      picker.clear();
+      for (const b of toolButtons) b.setAttribute("aria-pressed", "false");
+      button.setAttribute("aria-pressed", String(on));
+      actions.onTool(on ? tool : undefined);
+    });
+    grid.append(button);
+  };
+  addTool(removeButton, "Remove pieces", { kind: "remove" });
+  // Owners and admins only.
+  const zoneButton = document.createElement("button");
+  const unzoneButton = document.createElement("button");
+  toolButtons.push(zoneButton, unzoneButton);
+  addTool(zoneButton, "Draw a private room", { kind: "zone" });
+  addTool(unzoneButton, "Remove a private room", { kind: "unzone" });
 
   const reset = document.createElement("button");
   reset.type = "button";
@@ -131,7 +148,7 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
     launcher.setAttribute("aria-pressed", String(open));
     if (!open) {
       picker.clear();
-      removeButton.setAttribute("aria-pressed", "false");
+      for (const b of toolButtons) b.setAttribute("aria-pressed", "false");
       actions.onTool(undefined);
     }
     actions.onToggle(open);
@@ -141,7 +158,7 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
 
   return {
     setAvailable(available, canEmpty = false) {
-      reset.hidden = !canEmpty;
+      reset.hidden = zoneButton.hidden = unzoneButton.hidden = !canEmpty;
       launcher.dataset.available = String(available);
       if (!available) setOpen(false);
     },

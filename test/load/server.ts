@@ -87,6 +87,7 @@ gameServer
       remove: async () => true,
       clear: async () => {},
     },
+    zones: { list: async () => [], add: async () => "0", remove: async () => true },
   })
   .filterBy(["spaceId"]);
 

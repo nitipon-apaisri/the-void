@@ -25,10 +25,22 @@ export class Furniture extends Schema {
   @type("number") row = 0;
 }
 
+export class Zone extends Schema {
+  @type("string") name = "";
+  @type("number") x = 0;
+  @type("number") y = 0;
+  @type("number") width = 0;
+  @type("number") height = 0;
+  // Drawn by an owner or admin, so it can be removed.
+  @type("boolean") custom = false;
+}
+
 export class VoidState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   // Keyed by the table's id from the map.
   @type({ map: TableClaim }) tables = new MapSchema<TableClaim>();
   // Keyed by the piece's id; placed by owners and admins.
   @type({ map: Furniture }) furniture = new MapSchema<Furniture>();
+  // Private rooms, keyed by id: the template's ("z<n>") and the ones drawn in the space.
+  @type({ map: Zone }) zones = new MapSchema<Zone>();
 }
