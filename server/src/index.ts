@@ -9,6 +9,7 @@ import { mapName, memberChannel, ROOM_NAME, SPACE_SIZES, SPACE_TEMPLATES } from 
 
 import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
+import { createBanRepository } from "./repositories/ban.repository.js";
 import { createInviteRepository } from "./repositories/invite.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
 import { createFurnitureRepository } from "./repositories/furniture.repository.js";
@@ -40,10 +41,17 @@ const auth = createAuthService({
 });
 
 const spaceService = createSpaceService(spaces);
-const inviteService = createInviteService(createInviteRepository(pool), spaces, env.authSecret);
+const bans = createBanRepository(pool);
+const inviteService = createInviteService(
+  createInviteRepository(pool),
+  spaces,
+  bans,
+  env.authSecret,
+);
 // The rooms listen on this channel, so a removal or role change reaches someone who is online.
 const memberService = createMemberService({
   spaces,
+  bans,
   claims,
   events: {
     publish: (spaceId, event) => void matchMaker.presence.publish(memberChannel(spaceId), event),

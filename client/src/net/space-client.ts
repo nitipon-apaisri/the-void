@@ -3,6 +3,7 @@ import {
   INVITE_ROUTES,
   SPACE_ROUTES,
   type ApiError,
+  type BannedMember,
   type CreateSpacePayload,
   type CreatedInvite,
   type InviteOptions,
@@ -31,6 +32,10 @@ export interface SpaceClient {
   // Owners hand roles out; owners and admins remove people; anyone may remove themselves (leave).
   setRole(token: string, spaceId: string, userId: string, role: SpaceRole): Promise<void>;
   removeMember(token: string, spaceId: string, userId: string): Promise<void>;
+  // Owners and admins ban (which also removes) and lift bans.
+  listBans(token: string, spaceId: string): Promise<BannedMember[]>;
+  banMember(token: string, spaceId: string, userId: string): Promise<void>;
+  unbanMember(token: string, spaceId: string, userId: string): Promise<void>;
   // Anyone signed in who holds a link.
   previewInvite(token: string, invite: string): Promise<InvitePreview>;
   acceptInvite(token: string, invite: string): Promise<InviteResult>;
@@ -84,6 +89,13 @@ export function createSpaceClient(baseUrl: string): SpaceClient {
     },
     async removeMember(token, spaceId, userId) {
       await call(spacePath(spaceId, `/members/${encodeURIComponent(userId)}`), "DELETE", token);
+    },
+    listBans: (token, spaceId) => call(spacePath(spaceId, "/bans"), "GET", token),
+    async banMember(token, spaceId, userId) {
+      await call(spacePath(spaceId, `/bans/${encodeURIComponent(userId)}`), "PUT", token);
+    },
+    async unbanMember(token, spaceId, userId) {
+      await call(spacePath(spaceId, `/bans/${encodeURIComponent(userId)}`), "DELETE", token);
     },
     previewInvite: (token, invite) => call(invitePath(invite), "GET", token),
     acceptInvite: (token, invite) => call(invitePath(invite, "/accept"), "POST", token),

@@ -79,6 +79,24 @@ export function mountSpaceRoutes(
     }),
   );
 
+  app.get(space("/bans"), (req, res) =>
+    respondAs(auth, req, res, (id) => members.bans(id, String(req.params.spaceId))),
+  );
+
+  app.put(space("/bans/:userId"), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await members.ban(id, String(req.params.spaceId), String(req.params.userId));
+      return {};
+    }),
+  );
+
+  app.delete(space("/bans/:userId"), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await members.unban(id, String(req.params.spaceId), String(req.params.userId));
+      return {};
+    }),
+  );
+
   app.get(space("/invites"), (req, res) =>
     respondAs(auth, req, res, (id) => invites.list(id, String(req.params.spaceId))),
   );

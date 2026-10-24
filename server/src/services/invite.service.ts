@@ -16,6 +16,7 @@ import {
   type JoinRequest,
 } from "@void/shared";
 
+import type { BanRepository } from "../repositories/ban.repository.js";
 import type { InviteRepository } from "../repositories/invite.repository.js";
 import { isUuid, type SpaceRepository } from "../repositories/space.repository.js";
 import { AuthError } from "./auth.service.js";
@@ -51,6 +52,7 @@ const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 export function createInviteService(
   invites: InviteRepository,
   spaces: SpaceRepository,
+  bans: BanRepository,
   /** Keys the hash of join codes (the server's AUTH_SECRET). */
   secret: string,
 ): InviteService {
@@ -63,14 +65,17 @@ export function createInviteService(
   };
 
   // A link token or a join code, whichever was typed or opened.
-  const find = async (input: string) => {
+  const find = async (input: string, userId: string) => {
     const code = normalizeInviteCode(input);
     const target = code
       ? await invites.findByCodeHash(hashCode(secret, code))
       : TOKEN.test(input)
         ? await invites.findByHash(hashToken(input))
         : undefined;
-    if (!target) throw new AuthError(400, "this invite link or code is not valid any more");
+    // The same answer as for a dead link, so a ban does not announce itself.
+    if (!target || (await bans.isBanned(target.spaceId, userId))) {
+      throw new AuthError(400, "this invite link or code is not valid any more");
+    }
     return target;
   };
 
@@ -106,7 +111,7 @@ export function createInviteService(
     },
 
     async preview(userId, token) {
-      const target = await find(token);
+      const target = await find(token, userId);
       return {
         spaceName: target.spaceName,
         requiresApproval: target.requiresApproval,
@@ -115,7 +120,7 @@ export function createInviteService(
     },
 
     async accept(userId, token) {
-      const target = await find(token);
+      const target = await find(token, userId);
       const existing = await spaces.findSummary(target.spaceId, userId);
       if (existing) return { status: "joined", space: existing };
       if (target.requiresApproval) {

@@ -34,7 +34,7 @@ export interface SpaceRepository {
   /** Everyone in the space, owner first. Offline or online is the room's business, not ours. */
   listMembers(spaceId: string): Promise<SpaceMember[]>;
   savePosition(spaceId: string, userId: string, x: number, y: number): Promise<void>;
-  /** Adds a plain member; does nothing if they already belong. */
+  /** Adds a plain member; does nothing if they already belong or are banned from the space. */
   addMember(spaceId: string, userId: string): Promise<void>;
   findSummary(spaceId: string, userId: string): Promise<SpaceSummary | undefined>;
   /** Which map the space uses; undefined for a space that does not exist. */
@@ -149,7 +149,10 @@ export function createSpaceRepository(db: Queryable): SpaceRepository {
 
     async addMember(spaceId, userId) {
       await db.query(
-        `insert into t_space_members (space_id, user_id, role) values ($1, $2, 'member')
+        `insert into t_space_members (space_id, user_id, role)
+         select $1::uuid, $2::uuid, 'member'
+         where not exists (select 1 from t_space_bans
+                           where space_id = $1 and user_id = $2 and deleted_at is null)
          on conflict (space_id, user_id) where deleted_at is null do nothing`,
         [spaceId, userId],
       );

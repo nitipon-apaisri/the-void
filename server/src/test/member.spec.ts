@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_LOOK,
+  canBanMember,
   canChangeRole,
   canRemoveMember,
   canRemovePiece,
@@ -8,6 +10,7 @@ import {
 } from "@void/shared";
 
 import { parseRoleChange } from "../common/credentials.js";
+import type { BanRepository } from "../repositories/ban.repository.js";
 import type { SpaceRepository } from "../repositories/space.repository.js";
 import { createMemberService } from "../services/member.service.js";
 
@@ -44,8 +47,33 @@ function setup() {
       return true;
     },
   } as unknown as SpaceRepository;
+  const banned = new Set<string>();
+  const bans: BanRepository = {
+    async ban(_space, userId) {
+      if (banned.has(userId)) return false;
+      banned.add(userId);
+      // The real statement takes the person out of the space in the same step.
+      roles.delete(userId);
+      return true;
+    },
+    async unban(_space, userId) {
+      return banned.delete(userId);
+    },
+    async list() {
+      return [...banned].map((userId) => ({
+        userId,
+        name: "Ada",
+        look: DEFAULT_LOOK,
+        bannedAt: "now",
+      }));
+    },
+    async isBanned(_space, userId) {
+      return banned.has(userId);
+    },
+  };
   const service = createMemberService({
     spaces,
+    bans,
     claims: {
       async release(_space, userId) {
         released.push(userId);
@@ -54,7 +82,7 @@ function setup() {
     },
     events: { publish: (_space, event) => void events.push(event) },
   });
-  return { service, roles, events, released };
+  return { service, roles, events, released, banned };
 }
 
 describe("canRemoveMember", () => {
@@ -70,6 +98,16 @@ describe("canRemoveMember", () => {
     expect(canRemoveMember("admin", "admin", false)).toBe(false);
     expect(canRemoveMember("admin", "owner", false)).toBe(false);
     expect(canRemoveMember("member", "member", false)).toBe(false);
+  });
+});
+
+describe("canBanMember", () => {
+  it("follows the removal rules and never applies to yourself", () => {
+    expect(canBanMember("owner", "admin")).toBe(true);
+    expect(canBanMember("admin", "member")).toBe(true);
+    expect(canBanMember("admin", "admin")).toBe(false);
+    expect(canBanMember("admin", "owner")).toBe(false);
+    expect(canBanMember("member", "member")).toBe(false);
   });
 });
 
@@ -150,5 +188,36 @@ describe("createMemberService", () => {
       { kind: "role", userId: OWNER, role: "admin" },
       { kind: "role", userId: ADMIN, role: "owner" },
     ]);
+  });
+
+  it("bans a member: they are out, their desk is freed and the room is told", async () => {
+    const { service, roles, events, released, banned } = setup();
+    await service.ban(ADMIN, SPACE, ADA);
+    expect(banned.has(ADA)).toBe(true);
+    expect(roles.has(ADA)).toBe(false);
+    expect(released).toEqual([ADA]);
+    expect(events).toEqual([{ kind: "removed", userId: ADA }]);
+  });
+
+  it("refuses bans the removal rules refuse, and a second ban", async () => {
+    const { service, banned } = setup();
+    await expect(service.ban(ADMIN, SPACE, OWNER)).rejects.toMatchObject({ status: 403 });
+    await expect(service.ban(ADMIN, SPACE, ADMIN)).rejects.toMatchObject({ status: 403 });
+    await expect(service.ban(ADA, SPACE, BOB)).rejects.toMatchObject({ status: 403 });
+    expect(banned.size).toBe(0);
+    await service.ban(OWNER, SPACE, ADA);
+    // Banned people are no longer members, so a repeat is "not in this space".
+    await expect(service.ban(OWNER, SPACE, ADA)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("lets owners and admins list and lift bans, and nobody else", async () => {
+    const { service, banned } = setup();
+    await service.ban(OWNER, SPACE, ADA);
+    expect(await service.bans(ADMIN, SPACE)).toHaveLength(1);
+    await expect(service.bans(BOB, SPACE)).rejects.toMatchObject({ status: 403 });
+    await expect(service.unban(BOB, SPACE, ADA)).rejects.toMatchObject({ status: 403 });
+    await service.unban(ADMIN, SPACE, ADA);
+    expect(banned.has(ADA)).toBe(false);
+    await expect(service.unban(ADMIN, SPACE, ADA)).rejects.toMatchObject({ status: 400 });
   });
 });

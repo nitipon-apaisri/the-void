@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SpaceRole } from "@void/shared";
 
 import { parseInviteOptions } from "../common/credentials.js";
+import type { BanRepository } from "../repositories/ban.repository.js";
 import type { InviteRepository, InviteTarget } from "../repositories/invite.repository.js";
 import type { SpaceRepository } from "../repositories/space.repository.js";
 import { createInviteService, hashCode, hashToken } from "../services/invite.service.js";
@@ -81,7 +82,10 @@ function setup(roles: Record<string, SpaceRole>) {
       members.set(userId, "member");
     },
   } as unknown as SpaceRepository;
-  return { service: createInviteService(invites, spaces, SECRET), members, requests, byCode, log };
+  const banned = new Set<string>();
+  const bans = { isBanned: async (_space: string, userId: string) => banned.has(userId) };
+  const service = createInviteService(invites, spaces, bans as BanRepository, SECRET);
+  return { service, members, requests, byCode, log, banned };
 }
 
 const open = { requiresApproval: false, expiresInHours: null };
@@ -148,6 +152,21 @@ describe("createInviteService", () => {
   it("refuses a code that was never issued", async () => {
     const { service } = setup({ owner: "owner" });
     await expect(service.accept("guest", "AAAAA-AAAAA")).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("treats a banned person's link or code like a dead one, and queues no request", async () => {
+    const { service, members, requests, banned } = setup({ owner: "owner" });
+    const { token, code } = await service.create("owner", SPACE, {
+      ...open,
+      requiresApproval: true,
+    });
+    banned.add("guest");
+    for (const invite of [token, code]) {
+      await expect(service.accept("guest", invite)).rejects.toMatchObject({ status: 400 });
+      await expect(service.preview("guest", invite)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(members.has("guest")).toBe(false);
+    expect(requests).toEqual([]);
   });
 
   it("does not demote or duplicate someone who is already in", async () => {

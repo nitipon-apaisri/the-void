@@ -305,6 +305,8 @@ export class WorldScene extends Phaser.Scene {
       onDecide: (userId, approve) => this.decideRequest(userId, approve),
       onSetRole: (member, role) => this.changeRole(member, role),
       onRemove: (member) => this.removeMember(member),
+      onBan: (member) => this.banMember(member),
+      onUnban: (userId) => this.unbanMember(userId),
       onLeave: () => void this.leaveSpace(),
     });
     this.people.setViewer(session.user.id, space.role);
@@ -317,6 +319,7 @@ export class WorldScene extends Phaser.Scene {
     });
     this.people.setOnline(new Set([session.user.id]));
     void this.loadMembers();
+    void this.loadBans();
 
     this.me = this.spawnPlayer(spawn.x, spawn.y, session.user.name, session.user.look);
     // A small dead zone stops the view from twitching on every step; the lerp eases the rest.
@@ -545,7 +548,7 @@ export class WorldScene extends Phaser.Scene {
     if (!session || !space) return;
     const ok = await confirmDialog({
       title: `Remove ${member.name}?`,
-      body: "They lose access to this space and give up their desk. They can come back through an invite link.",
+      body: "They lose access to this space and give up their desk. They can come back through an invite link; use Ban to stop that.",
       confirmLabel: "Remove",
     });
     if (!ok) throw new Error("cancelled");
@@ -556,6 +559,48 @@ export class WorldScene extends Phaser.Scene {
       throw err;
     }
     await this.loadMembers();
+  }
+
+  private async banMember(member: SpaceMember) {
+    const { session, space } = this;
+    if (!session || !space) return;
+    const ok = await confirmDialog({
+      title: `Ban ${member.name}?`,
+      body: "They are removed, give up their desk, and cannot come back or ask to join with a link or code until you unban them.",
+      confirmLabel: "Ban",
+    });
+    if (!ok) throw new Error("cancelled");
+    try {
+      await this.spaces.banMember(session.token, space.id, member.userId);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 4000);
+      throw err;
+    }
+    await Promise.all([this.loadMembers(), this.loadBans()]);
+  }
+
+  private async unbanMember(userId: string) {
+    const { session, space } = this;
+    if (!session || !space) return;
+    try {
+      await this.spaces.unbanMember(session.token, space.id, userId);
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 4000);
+      throw err;
+    }
+    this.toast.show("Unbanned. They need a new link or code to come back.", "info", 4000);
+    await this.loadBans();
+  }
+
+  // Only owners and admins can read the list; it changes only when one of them acts.
+  private async loadBans() {
+    const { session, space } = this;
+    if (!session || !space || !canManageMembers(space.role)) return;
+    try {
+      this.people?.setBans(await this.spaces.listBans(session.token, space.id));
+    } catch {
+      // Shown stale until the next change.
+    }
   }
 
   private async leaveSpace() {

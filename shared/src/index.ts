@@ -379,6 +379,10 @@ export const canRemoveMember = (actor: SpaceRole, target: SpaceRole, self: boole
   return actor === "admin" && target === "member";
 };
 
+/** Banning takes someone out for good, so it follows the removal rules, and never applies to yourself. */
+export const canBanMember = (actor: SpaceRole, target: SpaceRole): boolean =>
+  canRemoveMember(actor, target, false);
+
 /**
  * Whether `actor` may give `target` the role `next`. Only the owner changes roles; "owner" hands
  * the space over (the old owner becomes an admin), so there is always exactly one.
@@ -456,6 +460,14 @@ export interface JoinRequest {
   name: string;
   look: Look;
   createdAt: string;
+}
+
+/** Someone banned from a space, as owners and admins see them. */
+export interface BannedMember {
+  userId: string;
+  name: string;
+  look: Look;
+  bannedAt: string;
 }
 
 export interface SpaceSummary {

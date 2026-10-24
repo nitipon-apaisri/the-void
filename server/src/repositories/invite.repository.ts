@@ -176,7 +176,9 @@ export function createInviteRepository(db: Queryable): InviteRepository {
            returning user_id
          ), added as (
            insert into t_space_members (space_id, user_id, role)
-           select $1, user_id, 'member' from decided where $3
+           select $1, user_id, 'member' from decided
+           where $3 and not exists (select 1 from t_space_bans
+                                    where space_id = $1 and user_id = $2 and deleted_at is null)
            on conflict (space_id, user_id) where deleted_at is null do nothing
          )
          select user_id from decided`,

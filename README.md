@@ -6,7 +6,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 
 - **Accounts**: sign up with an email and password, edit your name and character, change email or password, sign out other devices, delete your account.
 - **Spaces**: each space is its own room with its own members and its own voice. After signing in you choose to join a space (one you are in, or a new one with a short code) or to create one; the last one opens by itself. A new space starts from a template (Classic office, Open plan, Studio or an Empty room) at a size (small, medium or large).
-- **Invite links and codes**: owners and admins share a link or a short code, optionally needing their approval; pending people appear in the People panel. Owners hand out roles, admins and owners remove people, and anyone can leave.
+- **Invite links and codes**: owners and admins share a link or a short code, optionally needing their approval; pending people appear in the People panel. Owners hand out roles, admins and owners remove or ban people (a ban also blocks their links and codes until lifted), and anyone can leave.
 - **Walking**: arrow keys or WASD, or click anywhere (on the map or the mini map) and your character finds a path round the walls. The office is 90 x 67 tiles: offices, meeting rooms, lounges and a cafeteria.
 - **Desks**: walk up to a desk and claim it; your name shows on it. One desk each, per space.
 - **Sitting**: walk up to a chair and stop to sit down; move or click to stand again.
@@ -33,7 +33,7 @@ Built and tried by hand:
 - [x] Spaces, members and roles, with a Join or Create space picker
 - [x] People panel: online and offline, search, walk to someone
 - [x] Invite links and join codes, with optional approval
-- [x] Change roles, remove members, hand over a space, leave a space
+- [x] Change roles, remove or ban members, hand over a space, leave a space
 - [x] Space sizes (small, medium, large)
 - [x] Load test with 100 bots (`npm run load`)
 - [x] Space templates (Classic office, Open plan, Studio, Empty room) picked when a space is created
@@ -47,7 +47,6 @@ Built and tried by hand:
 
 Planned (see [`PLAN.md`](PLAN.md)):
 
-- [ ] Ban (a removed person can return through an open link)
 - [ ] Text chat, status and do-not-disturb, follow a person
 - [ ] Desktop notifications and the `thevoid://join/...` link
 - [ ] Packaging for macOS and Windows, signing, auto-update
