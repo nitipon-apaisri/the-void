@@ -134,17 +134,18 @@ Game rules live in `client/src/systems/` as pure functions with no Phaser in the
 
 ## Server specification
 
-A starting point for about 100 people at once. Only the game server numbers are measured (`npm run load -- --bots 100 --seconds 30 --size large`, 100 bots walking in one space on a laptop); the voice and network figures are estimates until you run LiveKit's own load tester (`lk load-test`) with realistic camera use.
+A starting point for about 100 people at once. The game server numbers come from `npm run load -- --bots 100 --seconds 30 --size large` (100 bots walking in one space on a laptop), and the LiveKit numbers from `test/load/voice.sh` (16 rooms of 6 people, so each hears 5 others, run against a local LiveKit with the load generators on the same laptop). Neither includes real browsers or a real network.
 
-| Part                                 | Measured or estimated                                                                                                | Start with                                               |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Game server (Colyseus, one process)  | Measured: about 9% of one core, 110 MB, about 17 KB/s out per client (1.7 MB/s in total), event loop p99 under 25 ms | 1 vCPU, 1 to 2 GB RAM. One room is single-threaded       |
-| Postgres                             | Light: reads and writes are small, and a position is saved only when someone leaves                                  | 1 vCPU, 1 to 2 GB RAM, 10 GB disk, or a managed instance |
-| LiveKit (voice, video, screen share) | Estimate: audio 30 to 50 kbps a stream, video 0.3 to 1.5 Mbps; people subscribe only to those nearby                 | 4 vCPU, 8 GB RAM, 1 Gbps link, public IP, open UDP ports |
+| Part                                 | Measured or estimated                                                                                                                                   | Start with                                               |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Game server (Colyseus, one process)  | Measured: about 9% of one core, 110 MB, about 17 KB/s out per client (1.7 MB/s in total), event loop p99 under 25 ms                                    | 1 vCPU, 1 to 2 GB RAM. One room is single-threaded       |
+| Postgres                             | Light: reads and writes are small, and a position is saved only when someone leaves                                                                     | 1 vCPU, 1 to 2 GB RAM, 10 GB disk, or a managed instance |
+| LiveKit (voice, video, screen share) | Measured for 100 people: voice only about 2 Mbps out, about 1 core; every camera on (medium) about 120 Mbps out, about 1 core, 0.1% packet loss at most | 4 vCPU, 8 GB RAM, 1 Gbps link, public IP, open UDP ports |
 
 - **One machine is enough to start**: 4 vCPU and 8 GB RAM running everything (game server, LiveKit and Postgres in Docker) with a 1 Gbps link. Split LiveKit onto its own machine when you want to scale voice separately.
-- **Bandwidth is the limit to watch**, not CPU. A realistic mix (mostly audio, some video) is roughly 10 to 50 Mbps out of LiveKit; the worst case, 100 cameras on with about 5 people nearby each, is 100 to 250 Mbps. Check the egress price of your host.
-- **Not measured**: LiveKit under load, the HTTP API and database, and 100 real browsers (client frame rate with many sprites on screen).
+- **Bandwidth is the limit to watch**, not CPU. A realistic mix (mostly audio, some video) is roughly 10 to 50 Mbps out of LiveKit (an estimate between the two measured runs); the worst case, 100 cameras on with 5 people nearby each, measured about 120 Mbps (1.1 to 1.4 Mbps per person), and real 720p cameras would cost somewhat more. Check the egress price of your host.
+- **Not measured**: the HTTP API and database, screen shares, a real network (the LiveKit run was over loopback), and 100 real browsers (client frame rate with many sprites and video tiles on screen).
+- Repeat the voice run with `test/load/voice.sh --rooms 16 --kind video --seconds 40` (`--kind audio` for voice only; needs `lk`, `brew install livekit-cli`).
 - The game server does not yet send each client only nearby players; at this size it is not needed (see `PLAN.md`, step 8).
 
 ## Before going to production
