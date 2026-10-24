@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="planet"><circle cx="512" cy="512" r="175"/></clipPath>
+    <clipPath id="shape"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <g clip-path="url(#shape)">
+    <rect x="100" y="100" width="824" height="824" fill="#000"/>
+    <g transform="rotate(-24 512 512)" fill="none" stroke-linecap="round">
+      <!-- the ring behind the planet, the planet, then the ring in front of it with a gap cut around it -->
+      <path d="M212 512 A300 100 0 0 1 812 512" stroke="#fff" stroke-width="30"/>
+      <circle cx="512" cy="512" r="175" fill="#fff" stroke="none"/>
+      <path d="M212 512 A300 100 0 0 0 812 512" stroke="#000" stroke-width="58" clip-path="url(#planet)"/>
+      <path d="M212 512 A300 100 0 0 0 812 512" stroke="#fff" stroke-width="30"/>
+    </g>
+  </g>
+</svg>

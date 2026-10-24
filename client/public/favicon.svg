@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 824 824">
+  <defs>
+    <clipPath id="planet"><circle cx="512" cy="512" r="185"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#000"/>
+  <g transform="rotate(-24 512 512)" fill="none" stroke-linecap="round">
+    <path d="M212 512 A300 100 0 0 1 812 512" stroke="#fff" stroke-width="44"/>
+    <circle cx="512" cy="512" r="185" fill="#fff" stroke="none"/>
+    <path d="M212 512 A300 100 0 0 0 812 512" stroke="#000" stroke-width="82" clip-path="url(#planet)"/>
+    <path d="M212 512 A300 100 0 0 0 812 512" stroke="#fff" stroke-width="44"/>
+  </g>
+</svg>
