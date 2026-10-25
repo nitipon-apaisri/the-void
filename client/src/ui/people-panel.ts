@@ -19,6 +19,8 @@ export interface PeoplePanel {
   setMembers(members: readonly SpaceMember[]): void;
   /** Accounts that are in the room right now. */
   setOnline(userIds: ReadonlySet<string>): void;
+  /** Accounts sharing their screen as a presentation right now. */
+  setPresenting(userIds: ReadonlySet<string>): void;
   /** Owners and admins see the Invite button and the people waiting to be let in. */
   setCanManage(can: boolean): void;
   setRequests(requests: readonly JoinRequest[]): void;
@@ -138,6 +140,7 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
 
   let members: readonly SpaceMember[] = [];
   let online: ReadonlySet<string> = new Set();
+  let presenting: ReadonlySet<string> = new Set();
   let requests: readonly JoinRequest[] = [];
   let bans: readonly BannedMember[] = [];
   let canManage = false;
@@ -275,7 +278,10 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     name.textContent = member.name;
     const role = document.createElement("span");
     role.className = "void-people__role";
-    role.textContent = member.role === "member" ? "" : member.role;
+    const roleText = member.role === "member" ? "" : member.role;
+    role.textContent = presenting.has(member.userId)
+      ? [roleText, "presenting"].filter(Boolean).join(" · ")
+      : roleText;
     button.append(dot, name, role);
     const line = document.createElement("div");
     line.className = "void-people__line";
@@ -453,6 +459,10 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     },
     setOnline(next) {
       online = next;
+      render();
+    },
+    setPresenting(next) {
+      presenting = next;
       render();
     },
     setCanManage(can) {

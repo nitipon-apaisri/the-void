@@ -4,6 +4,8 @@ import {
   parseAddZone,
   parseAnswerKnock,
   parseLockZone,
+  parsePresent,
+  presenterIn,
   parseRemoveZone,
 } from "../handlers/zone.handler.js";
 
@@ -61,5 +63,37 @@ describe("parseAnswerKnock", () => {
     expect(parseAnswerKnock({ knockerId: "abc" })).toBeNull();
     expect(parseAnswerKnock({ knockerId: 5, allow: true })).toBeNull();
     expect(parseAnswerKnock("x")).toBeNull();
+  });
+});
+
+describe("parsePresent", () => {
+  it("needs a boolean", () => {
+    expect(parsePresent({ on: true })).toEqual({ on: true });
+    expect(parsePresent({ on: 1 })).toBeNull();
+    expect(parsePresent(undefined)).toBeNull();
+  });
+});
+
+describe("presenterIn", () => {
+  const me = { zone: "z1", presenting: false, name: "Me" };
+  const players = [
+    me,
+    { zone: "z1", presenting: true, name: "Sam" },
+    { zone: "z2", presenting: true, name: "Kim" },
+    { zone: "", presenting: true, name: "Lee" },
+  ];
+
+  it("names someone else presenting in the same room", () => {
+    expect(presenterIn(players, "z1", me)).toBe("Sam");
+  });
+
+  it("ignores yourself and other rooms", () => {
+    const sam = players[1]!;
+    expect(presenterIn(players, "z1", sam)).toBeUndefined();
+    expect(presenterIn(players, "z3", me)).toBeUndefined();
+  });
+
+  it("has no limit on the open floor", () => {
+    expect(presenterIn(players, "", me)).toBeUndefined();
   });
 });

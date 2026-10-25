@@ -61,6 +61,8 @@ import {
   parseAddZone,
   parseAnswerKnock,
   parseLockZone,
+  parsePresent,
+  presenterIn,
   parseRemoveZone,
 } from "./handlers/zone.handler.js";
 import { Furniture, Player, TableClaim, VoidState, Zone } from "./void.state.js";
@@ -192,6 +194,17 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       zone.locked = request.locked;
       if (!request.locked) this.openZone(request.id);
+      return true;
+    });
+    this.answer(MESSAGES.PRESENT, (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const request = parsePresent(payload);
+      if (!player || !request) throw new Error("invalid request");
+      if (request.on) {
+        const other = presenterIn(this.state.players.values(), player.zone, player);
+        if (other) throw new Error(`${other} is already presenting here`);
+      }
+      player.presenting = request.on;
       return true;
     });
     this.answer(MESSAGES.ANSWER_KNOCK, (client, payload: unknown) => {
@@ -503,6 +516,8 @@ export class VoidRoom extends Room<{ state: VoidState }> {
   private setZone(player: Player, next: string) {
     const previous = player.zone;
     player.zone = next;
+    // Walking into or out of a room ends a presentation: its audience is the room.
+    if (previous !== next) player.presenting = false;
     if (previous && previous !== next) this.releaseIfEmpty(previous);
   }
 

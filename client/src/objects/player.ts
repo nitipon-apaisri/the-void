@@ -25,6 +25,7 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   private readonly sprite: Phaser.GameObjects.Sprite;
   private readonly label: Phaser.GameObjects.Text;
   private readonly ring: Phaser.GameObjects.Ellipse;
+  private readonly badge: Phaser.GameObjects.Text;
   private pulse?: Phaser.Tweens.Tween;
   private lookCode = "";
   private textureKey = "";
@@ -50,8 +51,17 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       .ellipse(0, PLAYER_RADIUS - 2, 44, 18)
       .setStrokeStyle(3, SPEAKING_COLOR)
       .setVisible(false);
+    this.badge = scene.add
+      .text(0, NAME_OFFSET - 16, "Presenting", {
+        color: "#ffffff",
+        backgroundColor: "#5b63d3",
+        fontSize: "10px",
+        padding: { x: 5, y: 2 },
+      })
+      .setOrigin(0.5, 1)
+      .setVisible(false);
     this.setProfile(name, look);
-    this.add([this.ring, this.sprite, this.label]);
+    this.add([this.ring, this.sprite, this.label, this.badge]);
     this.setDepth(10);
     scene.add.existing(this);
   }
@@ -107,6 +117,15 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       yoyo: true,
       repeat: -1,
     });
+  }
+
+  /** A small "Presenting" tag over the name while this player shares their screen. */
+  setPresenting(on: boolean) {
+    this.badge.setVisible(on);
+  }
+
+  get displayName() {
+    return this.label.text;
   }
 
   setNameVisible(visible: boolean) {

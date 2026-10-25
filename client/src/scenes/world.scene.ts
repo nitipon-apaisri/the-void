@@ -94,6 +94,7 @@ import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace, type MapPreview } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
 import { createRoomBar, type RoomBar } from "../ui/room-bar";
+import { createStage, type Stage } from "../ui/stage";
 import { createDecoratePanel, type DecoratePanel, type DecorateTool } from "../ui/decorate-panel";
 import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
@@ -191,6 +192,10 @@ export class WorldScene extends Phaser.Scene {
   private lastMoveAt = 0;
   private waveButton?: WaveButton;
   private roomBar?: RoomBar;
+  private stage?: Stage;
+  // Session ids of the players sharing their screen as a presentation, and whether we do.
+  private readonly presenters = new Set<string>();
+  private sharingScreen = false;
   private waveTarget?: string;
   // True while the route came from "go to a person": that is quicker than walking.
   private running = false;
@@ -235,7 +240,25 @@ export class WorldScene extends Phaser.Scene {
       // The desktop shell has no built-in picker, so ours runs first. Browsers use their own.
       const bridge = desktopBridge();
       if (on && bridge) await this.pickScreen(bridge);
-      await this.voice?.setScreenShareEnabled(on);
+      if (!on) {
+        await this.voice?.setScreenShareEnabled(false);
+        return;
+      }
+      // Sharing is presenting: take the stage first, so a second presenter in a room is told no
+      // before the picker opens.
+      try {
+        await this.connection?.setPresenting(true);
+      } catch (err) {
+        this.toast.show(err instanceof Error ? err.message : "Could not present", "error", 3000);
+        // The button treats this as a cancelled picker and stays off without a console error.
+        throw new DOMException("not allowed to present", "NotAllowedError");
+      }
+      try {
+        await this.voice?.setScreenShareEnabled(true);
+      } catch (err) {
+        void this.connection?.setPresenting(false);
+        throw err;
+      }
     });
     this.zoomControls = createZoomControls({
       onStep: (direction) => this.setZoom(stepZoom(this.viewZoom, direction)),
@@ -249,6 +272,7 @@ export class WorldScene extends Phaser.Scene {
       this.tablePromptView?.destroy();
       this.waveButton?.destroy();
       this.roomBar?.destroy();
+      this.stage?.destroy();
       this.decorate?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
@@ -280,6 +304,7 @@ export class WorldScene extends Phaser.Scene {
     );
     this.setUpTables(map);
     this.waveButton = createWaveButton(() => this.waveAtTarget());
+    this.stage = createStage();
     this.roomBar = createRoomBar({
       onLock: (locked) => void this.lockRoom(locked),
       onAnswer: (knockerId, allow) => void this.answerKnock(knockerId, allow),
@@ -1192,6 +1217,7 @@ export class WorldScene extends Phaser.Scene {
           this.route = [];
           this.myZone = p.zone;
           this.refreshRoomBar();
+          this.showPresenting(p.id, p.userId, p.presenting);
           return;
         }
         const sprite = this.spawnPlayer(p.x, p.y, p.name, p.look);
@@ -1199,6 +1225,7 @@ export class WorldScene extends Phaser.Scene {
         if (p.seat) this.seatOf.set(p.id, p.seat);
         this.zoneOf.set(p.id, p.zone);
         this.others.set(p.id, sprite);
+        this.showPresenting(p.id, p.userId, p.presenting);
         this.accounts.set(p.id, p.userId);
         this.refreshOnline();
         // Someone who joined the space after we loaded the list.
@@ -1215,6 +1242,7 @@ export class WorldScene extends Phaser.Scene {
         else this.seatOf.delete(p.id);
         if (p.id === connection.sessionId) this.enterZone(p.zone);
         else this.zoneOf.set(p.id, p.zone);
+        this.showPresenting(p.id, p.userId, p.presenting);
         // The room stood us up (the chair was removed): forget the seat here too.
         if (p.id === connection.sessionId && this.mySeat && !p.seat) this.leaveSeat();
         const sprite = this.others.get(p.id);
@@ -1298,11 +1326,27 @@ export class WorldScene extends Phaser.Scene {
   private async startVoice(connection: VoidConnection) {
     try {
       const voice = await connectVoice(await connection.requestVoiceToken());
-      voice.onMedia((id, el, kind) => this.voicePanel.addMedia(id, el, kind));
-      voice.onMediaRemoved((id, el) => this.voicePanel.removeMedia(id, el));
-      voice.onPlayerGone((id) => this.voicePanel.removePlayer(id));
+      voice.onMedia((id, el, kind) => {
+        // A shared screen goes to the big stage; cameras and audio stay in the voice panel.
+        if (kind === "screen")
+          this.stage?.show(id, this.others.get(id)?.displayName ?? "Someone", el);
+        else this.voicePanel.addMedia(id, el, kind);
+      });
+      voice.onMediaRemoved((id, el) => {
+        this.stage?.remove(id, el);
+        this.voicePanel.removeMedia(id, el);
+      });
+      voice.onPlayerGone((id) => {
+        this.stage?.removePlayer(id);
+        this.voicePanel.removePlayer(id);
+      });
       voice.onLocalVideo((el) => this.voicePanel.setLocalVideo(el));
-      voice.onLocalScreen((on) => this.voicePanel.setScreenSharing(on));
+      voice.onLocalScreen((on) => {
+        this.sharingScreen = on;
+        this.voicePanel.setScreenSharing(on);
+        // The share ended (including the browser's own stop button): leave the stage too.
+        if (!on) void this.connection?.setPresenting(false).catch(() => {});
+      });
       voice.onSpeakers((remote, self) => {
         this.speaking = remote;
         this.selfSpeaking = self;
@@ -1310,6 +1354,8 @@ export class WorldScene extends Phaser.Scene {
       });
       voice.onDisconnect(() => {
         this.voice = undefined;
+        this.sharingScreen = false;
+        void this.connection?.setPresenting(false).catch(() => {});
         this.clearSpeaking();
         this.voicePanel.setEnabled(false);
         this.toast.show("Voice disconnected", "error", 3000);
@@ -1341,6 +1387,8 @@ export class WorldScene extends Phaser.Scene {
     const voice = this.voice;
     this.voice = undefined;
     this.nearby = new Set();
+    this.sharingScreen = false;
+    void this.connection?.setPresenting(false).catch(() => {});
     this.clearSpeaking();
     this.voicePanel.setEnabled(false);
     await voice?.leave();
@@ -1410,6 +1458,27 @@ export class WorldScene extends Phaser.Scene {
     this.refreshRoomBar();
     const name = this.zones.get(zone)?.name;
     this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
+  }
+
+  private refreshPresenters() {
+    const mine = this.connection?.sessionId;
+    const userIds = [...this.presenters].map((s) =>
+      s === mine ? this.session?.user.id : this.accounts.get(s),
+    );
+    this.people?.setPresenting(new Set(userIds.filter((u): u is string => u !== undefined)));
+  }
+
+  // The badge, the People panel and, for us, the share itself follow the server's word.
+  private showPresenting(id: string, userId: string, presenting: boolean) {
+    if (presenting === this.presenters.has(id)) return;
+    if (presenting) this.presenters.add(id);
+    else this.presenters.delete(id);
+    (id === this.connection?.sessionId ? this.me : this.others.get(id))?.setPresenting(presenting);
+    this.refreshPresenters();
+    // The server ended our presentation (we walked into or out of a room): stop sharing.
+    if (!presenting && id === this.connection?.sessionId && this.sharingScreen) {
+      void this.voice?.setScreenShareEnabled(false);
+    }
   }
 
   private refreshRoomBar() {
@@ -1553,6 +1622,9 @@ export class WorldScene extends Phaser.Scene {
     this.others.delete(id);
     this.accounts.delete(id);
     this.zoneOf.delete(id);
+    this.presenters.delete(id);
+    this.refreshPresenters();
+    this.stage?.removePlayer(id);
     this.refreshOnline();
   }
 

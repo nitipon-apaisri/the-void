@@ -19,6 +19,7 @@ import {
   type KnockPayload,
   type KnockResultPayload,
   type LockZonePayload,
+  type PresentPayload,
   type RemoveZonePayload,
   type WavedPayload,
   type Look,
@@ -43,6 +44,8 @@ export interface PlayerSnapshot extends Position {
   facing: string;
   /** The meeting room they stand in ("" outside all of them); only the server sets it. */
   zone: string;
+  /** Sharing their screen as a presentation. */
+  presenting: boolean;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -68,6 +71,8 @@ export interface VoidConnection {
   removeZone(id: string): Promise<void>;
   /** Fires with every private room (the template's and the drawn ones) whenever one changes. */
   onZones(cb: (zones: MapZone[]) => void): void;
+  /** Claim or give up the stage. Rejects with the reason (someone else presents in this room). */
+  setPresenting(on: boolean): Promise<void>;
   /** Lock or unlock the room you stand in. Rejects with the server's reason. */
   lockZone(id: string, locked: boolean): Promise<void>;
   /** Anyone inside a locked room may let a knocker in or turn them away. */
@@ -132,6 +137,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     seat: p.seat,
     facing: p.facing,
     zone: p.zone,
+    presenting: p.presenting,
   });
 
   return {
@@ -215,6 +221,9 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
         zones.delete(id);
         emit();
       });
+    },
+    setPresenting: async (on) => {
+      await room.request(MESSAGES.PRESENT, { on } satisfies PresentPayload);
     },
     lockZone: async (id, locked) => {
       await room.request(MESSAGES.LOCK_ZONE, { id, locked } satisfies LockZonePayload);

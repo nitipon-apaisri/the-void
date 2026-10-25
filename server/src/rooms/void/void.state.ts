@@ -12,6 +12,8 @@ export class Player extends Schema {
   @type("string") facing = "";
   // The id of the meeting room they stand in ("" outside all of them); set by the server only.
   @type("string") zone = "";
+  // Sharing their screen as a presentation; one person at a time in a private room.
+  @type("boolean") presenting = false;
 }
 
 export class TableClaim extends Schema {

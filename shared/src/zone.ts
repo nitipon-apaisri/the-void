@@ -78,6 +78,10 @@ export function zoneError(
   return overlaps ? "that overlaps another room" : undefined;
 }
 
+export interface PresentPayload {
+  on: boolean;
+}
+
 export interface LockZonePayload {
   id: string;
   locked: boolean;

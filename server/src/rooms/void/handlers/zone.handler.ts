@@ -3,6 +3,7 @@ import type {
   AddZonePayload,
   AnswerKnockPayload,
   LockZonePayload,
+  PresentPayload,
   RemoveZonePayload,
 } from "@void/shared";
 
@@ -37,4 +38,23 @@ export function parseAnswerKnock(payload: unknown): AnswerKnockPayload | null {
   return typeof knockerId === "string" && knockerId.length <= 64 && typeof allow === "boolean"
     ? { knockerId, allow }
     : null;
+}
+
+export function parsePresent(payload: unknown): PresentPayload | null {
+  if (!isObject(payload)) return null;
+  const { on } = payload;
+  return typeof on === "boolean" ? { on } : null;
+}
+
+/** The name of someone else presenting in this room, or undefined. Open floor has no limit. */
+export function presenterIn(
+  players: Iterable<{ zone: string; presenting: boolean; name: string }>,
+  zoneId: string,
+  except: object,
+): string | undefined {
+  if (!zoneId) return undefined;
+  for (const p of players) {
+    if (p !== except && p.zone === zoneId && p.presenting) return p.name;
+  }
+  return undefined;
 }

@@ -182,6 +182,9 @@ export const MESSAGES = {
   ANSWER_KNOCK: "answer-knock",
   // Server to the knocker and to the people inside: how the knock stands.
   KNOCK_RESULT: "knock-result",
+  // Request/response: start or stop presenting (sharing your screen to the room). Refused when
+  // someone else already presents in the private room you are in.
+  PRESENT: "present",
 } as const;
 
 export interface VoiceToken {
