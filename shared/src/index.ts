@@ -3,6 +3,7 @@ export * from "./furniture.js";
 export * from "./art-catalog.js";
 export * from "./seat.js";
 export * from "./zone.js";
+export * from "./status.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
@@ -186,6 +187,8 @@ export const MESSAGES = {
   // someone else already presents in the private room you are in.
   PRESENT: "present",
   // Request/response: an owner or admin mutes someone's mic or ends their presentation.
+  // Request/response: set your status (available, away, do not disturb).
+  SET_STATUS: "set-status",
   MODERATE: "moderate",
   /** Server to the one moderated: switch the mic off (or end the share) and say who did it. */
   MODERATED: "moderated",

@@ -17,8 +17,10 @@ export function canWave(
   selfWave: boolean,
   now: number,
   lastAt: number | undefined,
+  // Someone on do not disturb is not waved at.
+  targetBusy = false,
 ): boolean {
-  if (selfWave) return false;
+  if (selfWave || targetBusy) return false;
   if (lastAt !== undefined && now - lastAt < WAVE_COOLDOWN_MS) return false;
   return Math.hypot(to.x - from.x, to.y - from.y) <= WAVE_RANGE;
 }

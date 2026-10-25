@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 
 // shared
-import { encodeLook, type Look } from "@void/shared";
+import { encodeLook, STATUS_COLORS, type Look, type PlayerStatus } from "@void/shared";
 
 // config
 import { PLAYER_RADIUS } from "../config/env";
@@ -26,6 +26,8 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   private readonly label: Phaser.GameObjects.Text;
   private readonly ring: Phaser.GameObjects.Ellipse;
   private readonly badge: Phaser.GameObjects.Text;
+  // A dot left of the name when away or on do not disturb.
+  private readonly dot: Phaser.GameObjects.Arc;
   private pulse?: Phaser.Tweens.Tween;
   private lookCode = "";
   private textureKey = "";
@@ -60,15 +62,19 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       })
       .setOrigin(0.5, 1)
       .setVisible(false);
+    this.dot = scene.add.circle(0, NAME_OFFSET - 6, 4, 0xffffff).setVisible(false);
     this.setProfile(name, look);
-    this.add([this.ring, this.sprite, this.label, this.badge]);
+    this.add([this.ring, this.sprite, this.label, this.dot, this.badge]);
     this.setDepth(10);
     scene.add.existing(this);
   }
 
   /** Cheap to call on every state change: only touches what differs. */
   setProfile(name: string, look: Look) {
-    if (this.label.text !== name) this.label.setText(name);
+    if (this.label.text !== name) {
+      this.label.setText(name);
+      this.placeDot();
+    }
     const code = encodeLook(look);
     if (code === this.lookCode) return;
     this.lookCode = code;
@@ -124,12 +130,24 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     this.badge.setVisible(on);
   }
 
+  /** A coloured dot beside the name for away and do not disturb; nothing when available. */
+  setStatus(status: PlayerStatus) {
+    this.dot.setVisible(status !== "available");
+    if (status !== "available")
+      this.dot.setFillStyle(Phaser.Display.Color.HexStringToColor(STATUS_COLORS[status]).color);
+  }
+
+  private placeDot() {
+    this.dot.setX(-this.label.width / 2 - 8);
+  }
+
   get displayName() {
     return this.label.text;
   }
 
   setNameVisible(visible: boolean) {
     this.label.setVisible(visible);
+    this.dot.setAlpha(visible ? 1 : 0);
   }
 
   /** Sits down facing the given way, or stands up (undefined or an unknown facing). */

@@ -8,7 +8,9 @@ import {
   type JoinRequest,
   type ModerateAction,
   type SpaceMember,
+  type PlayerStatus,
   type SpaceRole,
+  STATUS_LABELS,
 } from "@void/shared";
 
 // ui
@@ -23,6 +25,8 @@ export interface PeoplePanel {
   setOnline(userIds: ReadonlySet<string>): void;
   /** Accounts sharing their screen as a presentation right now. */
   setPresenting(userIds: ReadonlySet<string>): void;
+  /** Away and do-not-disturb people by account id; anyone missing is available. */
+  setStatuses(statuses: ReadonlyMap<string, PlayerStatus>): void;
   /** Owners and admins see the Invite button and the people waiting to be let in. */
   setCanManage(can: boolean): void;
   setRequests(requests: readonly JoinRequest[]): void;
@@ -145,6 +149,7 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
   let members: readonly SpaceMember[] = [];
   let online: ReadonlySet<string> = new Set();
   let presenting: ReadonlySet<string> = new Set();
+  let statuses: ReadonlyMap<string, PlayerStatus> = new Map();
   let requests: readonly JoinRequest[] = [];
   let bans: readonly BannedMember[] = [];
   let canManage = false;
@@ -292,9 +297,14 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     const role = document.createElement("span");
     role.className = "void-people__role";
     const roleText = member.role === "member" ? "" : member.role;
-    role.textContent = presenting.has(member.userId)
-      ? [roleText, "presenting"].filter(Boolean).join(" · ")
-      : roleText;
+    const status = statuses.get(member.userId);
+    role.textContent = [
+      roleText,
+      presenting.has(member.userId) ? "presenting" : "",
+      status && status !== "available" && isOnline ? STATUS_LABELS[status].toLowerCase() : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     button.append(dot, name, role);
     const line = document.createElement("div");
     line.className = "void-people__line";
@@ -472,6 +482,10 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     },
     setOnline(next) {
       online = next;
+      render();
+    },
+    setStatuses(next) {
+      statuses = next;
       render();
     },
     setPresenting(next) {

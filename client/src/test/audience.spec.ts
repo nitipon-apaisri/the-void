@@ -33,4 +33,21 @@ describe("audienceIds", () => {
     expect(audienceIds(me, edge, RADIUS).size).toBe(0);
     expect(audienceIds(me, edge, RADIUS, new Set(["a"])).size).toBe(1);
   });
+
+  it("leaves out people on do not disturb, outside a room", () => {
+    const busy = { ...at("busy", 10), busy: true };
+    expect([...audienceIds({ x: 0, y: 0, zone: "" }, [busy, at("ok", 20)], RADIUS)]).toEqual([
+      "ok",
+    ]);
+    expect(audienceIds({ x: 0, y: 0, zone: "", busy: true }, [at("ok", 20)], RADIUS).size).toBe(0);
+  });
+
+  it("still puts a busy person in the call of a room they stand in", () => {
+    const heard = audienceIds(
+      { x: 0, y: 0, zone: "z1", busy: true },
+      [{ ...at("a", 900, "z1"), busy: true }],
+      RADIUS,
+    );
+    expect([...heard]).toEqual(["a"]);
+  });
 });

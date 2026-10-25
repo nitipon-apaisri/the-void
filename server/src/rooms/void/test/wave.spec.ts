@@ -41,3 +41,11 @@ describe("canWave", () => {
     expect(canWave(here, near, false, 10_000 + WAVE_COOLDOWN_MS, 10_000)).toBe(true);
   });
 });
+
+describe("canWave with do not disturb", () => {
+  it("refuses a wave at someone who is busy", () => {
+    const here = { x: 0, y: 0 };
+    expect(canWave(here, here, false, 1000, undefined, true)).toBe(false);
+    expect(canWave(here, here, false, 1000, undefined, false)).toBe(true);
+  });
+});

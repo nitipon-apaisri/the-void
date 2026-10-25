@@ -18,7 +18,10 @@ import {
   type AnswerKnockPayload,
   type KnockPayload,
   type KnockResultPayload,
+  isPlayerStatus,
   type LockZonePayload,
+  type PlayerStatus,
+  type SetStatusPayload,
   type ModerateAction,
   type ModeratedPayload,
   type ModeratePayload,
@@ -49,6 +52,7 @@ export interface PlayerSnapshot extends Position {
   zone: string;
   /** Sharing their screen as a presentation. */
   presenting: boolean;
+  status: PlayerStatus;
 }
 
 /** What scenes know about the network. Keeps Colyseus out of game code. */
@@ -76,6 +80,7 @@ export interface VoidConnection {
   onZones(cb: (zones: MapZone[]) => void): void;
   /** Claim or give up the stage. Rejects with the reason (someone else presents in this room). */
   setPresenting(on: boolean): Promise<void>;
+  setStatus(status: PlayerStatus): Promise<void>;
   /** Owners and admins: ask someone to mute their mic or end their presentation. */
   moderate(userId: string, action: ModerateAction): Promise<void>;
   /** An owner or admin muted us or ended our presentation. */
@@ -145,6 +150,7 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     facing: p.facing,
     zone: p.zone,
     presenting: p.presenting,
+    status: isPlayerStatus(p.status) ? p.status : "available",
   });
 
   return {
@@ -231,6 +237,9 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     },
     setPresenting: async (on) => {
       await room.request(MESSAGES.PRESENT, { on } satisfies PresentPayload);
+    },
+    setStatus: async (status) => {
+      await room.request(MESSAGES.SET_STATUS, { status } satisfies SetStatusPayload);
     },
     moderate: async (userId, action) => {
       await room.request(MESSAGES.MODERATE, { userId, action } satisfies ModeratePayload);

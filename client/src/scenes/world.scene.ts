@@ -31,6 +31,7 @@ import {
   type JoinRequest,
   type Look,
   type MapTable,
+  type PlayerStatus,
   type Position,
   type InviteResult,
   type ModerateAction,
@@ -196,6 +197,8 @@ export class WorldScene extends Phaser.Scene {
   private stage?: Stage;
   // Session ids of the players sharing their screen as a presentation, and whether we do.
   private readonly presenters = new Set<string>();
+  // Away and do-not-disturb players by session id (available ones are absent), ours included.
+  private readonly statusOf = new Map<string, PlayerStatus>();
   private sharingScreen = false;
   private waveTarget?: string;
   // True while the route came from "go to a person": that is quicker than walking.
@@ -363,6 +366,7 @@ export class WorldScene extends Phaser.Scene {
     this.people.setViewer(session.user.id, space.role);
     this.watchRequests(space);
     this.accountBar = createAccountBar(session.user.name, {
+      onStatus: (status) => void this.chooseStatus(status),
       onPeople: () => this.people?.toggle(),
       onSwitchSpace: () => this.switchSpace(),
       onSettings: () => this.showSettings(),
@@ -819,7 +823,10 @@ export class WorldScene extends Phaser.Scene {
 
   // The nearest person in range gets the wave; the room checks the same range again.
   private refreshWave(me: Position) {
-    const others = [...this.others].map(([id, s]) => ({ id, x: s.x, y: s.y }));
+    // Someone on do not disturb is not offered a wave.
+    const others = [...this.others]
+      .filter(([id]) => this.statusOf.get(id) !== "busy")
+      .map(([id, s]) => ({ id, x: s.x, y: s.y }));
     const nearest = sortByDistance(me, others, nearbyIds(me, others, WAVE_RANGE))[0];
     this.waveTarget = nearest;
     const name = nearest
@@ -1234,6 +1241,7 @@ export class WorldScene extends Phaser.Scene {
           this.myZone = p.zone;
           this.refreshRoomBar();
           this.showPresenting(p.id, p.userId, p.presenting);
+          this.showStatus(p.id, p.status);
           return;
         }
         const sprite = this.spawnPlayer(p.x, p.y, p.name, p.look);
@@ -1241,8 +1249,9 @@ export class WorldScene extends Phaser.Scene {
         if (p.seat) this.seatOf.set(p.id, p.seat);
         this.zoneOf.set(p.id, p.zone);
         this.others.set(p.id, sprite);
-        this.showPresenting(p.id, p.userId, p.presenting);
         this.accounts.set(p.id, p.userId);
+        this.showPresenting(p.id, p.userId, p.presenting);
+        this.showStatus(p.id, p.status);
         this.refreshOnline();
         // Someone who joined the space after we loaded the list.
         if (!this.members.some((m) => m.userId === p.userId)) void this.loadMembers();
@@ -1259,6 +1268,7 @@ export class WorldScene extends Phaser.Scene {
         if (p.id === connection.sessionId) this.enterZone(p.zone);
         else this.zoneOf.set(p.id, p.zone);
         this.showPresenting(p.id, p.userId, p.presenting);
+        this.showStatus(p.id, p.status);
         // The room stood us up (the chair was removed): forget the seat here too.
         if (p.id === connection.sessionId && this.mySeat && !p.seat) this.leaveSeat();
         const sprite = this.others.get(p.id);
@@ -1442,9 +1452,10 @@ export class WorldScene extends Phaser.Scene {
       x: s.x,
       y: s.y,
       zone: this.zoneOf.get(id) ?? "",
+      busy: this.statusOf.get(id) === "busy",
     }));
     this.nearby = audienceIds(
-      { x: me.x, y: me.y, zone: this.myZone },
+      { x: me.x, y: me.y, zone: this.myZone, busy: this.myStatus === "busy" },
       others,
       this.settings.proximityTiles * TILE_SIZE,
       this.nearby,
@@ -1486,6 +1497,46 @@ export class WorldScene extends Phaser.Scene {
     this.refreshRoomBar();
     const name = this.zones.get(zone)?.name;
     this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
+  }
+
+  private async chooseStatus(status: PlayerStatus) {
+    try {
+      await this.connection?.setStatus(status);
+      if (status === "busy") {
+        this.toast.show(
+          "Do not disturb: outside a room nobody hears you, sees you or can wave",
+          "info",
+          3500,
+        );
+      }
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not set status", "error", 3000);
+    }
+  }
+
+  private get myStatus(): PlayerStatus {
+    return this.statusOf.get(this.connection?.sessionId ?? "") ?? "available";
+  }
+
+  private refreshStatuses() {
+    const mine = this.connection?.sessionId;
+    const byUser = new Map<string, PlayerStatus>();
+    for (const [id, status] of this.statusOf) {
+      const userId = id === mine ? this.session?.user.id : this.accounts.get(id);
+      if (userId) byUser.set(userId, status);
+    }
+    this.people?.setStatuses(byUser);
+  }
+
+  // The dot over the character, the People panel, our own menu and who we hear follow the server.
+  private showStatus(id: string, status: PlayerStatus) {
+    if ((this.statusOf.get(id) ?? "available") === status) return;
+    if (status === "available") this.statusOf.delete(id);
+    else this.statusOf.set(id, status);
+    const own = id === this.connection?.sessionId;
+    (own ? this.me : this.others.get(id))?.setStatus(status);
+    if (own) this.accountBar?.setStatus(status);
+    this.refreshStatuses();
   }
 
   private refreshPresenters() {
@@ -1651,7 +1702,9 @@ export class WorldScene extends Phaser.Scene {
     this.accounts.delete(id);
     this.zoneOf.delete(id);
     this.presenters.delete(id);
+    this.statusOf.delete(id);
     this.refreshPresenters();
+    this.refreshStatuses();
     this.stage?.removePlayer(id);
     this.refreshOnline();
   }

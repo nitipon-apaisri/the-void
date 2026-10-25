@@ -5,11 +5,13 @@ import { nearbyIds, type Positioned } from "./proximity";
 export interface Placed extends Positioned {
   /** The meeting room they stand in ("" when none), as the server says. */
   zone: string;
+  /** On do not disturb: nobody outside a room hears or sees them, nor they anyone. */
+  busy?: boolean;
 }
 
 /** Ids of the others we are connected to. `previous` supplies the distance hysteresis. */
 export function audienceIds(
-  me: { x: number; y: number; zone: string },
+  me: { x: number; y: number; zone: string; busy?: boolean },
   others: Iterable<Placed>,
   radius: number,
   previous: ReadonlySet<string> = new Set(),
@@ -19,7 +21,7 @@ export function audienceIds(
   for (const other of others) {
     if (me.zone || other.zone) {
       if (other.zone === me.zone) heard.add(other.id);
-    } else {
+    } else if (!me.busy && !other.busy) {
       open.push(other);
     }
   }

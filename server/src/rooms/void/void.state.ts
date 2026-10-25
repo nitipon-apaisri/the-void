@@ -14,6 +14,8 @@ export class Player extends Schema {
   @type("string") zone = "";
   // Sharing their screen as a presentation; one person at a time in a private room.
   @type("boolean") presenting = false;
+  // available, away or busy (do not disturb); the player sets it, never saved.
+  @type("string") status = "available";
 }
 
 export class TableClaim extends Schema {

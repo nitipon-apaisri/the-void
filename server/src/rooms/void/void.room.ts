@@ -56,6 +56,7 @@ import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
 import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
+import { parseSetStatus } from "./handlers/status.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
 import { ZoneAccess } from "./handlers/zone-access.js";
 import {
@@ -209,6 +210,13 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       player.presenting = request.on;
       return true;
     });
+    this.answer(MESSAGES.SET_STATUS, (client, payload: unknown) => {
+      const player = this.state.players.get(client.sessionId);
+      const request = parseSetStatus(payload);
+      if (!player || !request) throw new Error("invalid request");
+      player.status = request.status;
+      return true;
+    });
     this.answer(MESSAGES.MODERATE, (client, payload: unknown) => {
       const actor = this.state.players.get(client.sessionId);
       const account = (client as Client<{ auth: Account }>).auth;
@@ -268,7 +276,11 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const now = Date.now();
       if (!request || !from || !to) return;
       const self = request.targetId === client.sessionId;
-      if (!canWave(from, to, self, now, this.lastWave.get(client.sessionId))) return;
+      if (
+        !canWave(from, to, self, now, this.lastWave.get(client.sessionId), to.status === "busy")
+      ) {
+        return;
+      }
       this.lastWave.set(client.sessionId, now);
       const waved: WavedPayload = {
         fromId: client.sessionId,
