@@ -38,8 +38,13 @@ export function createVoiceTokenService(config: VoiceTokenConfig): VoiceTokenSer
         canPublish: true,
         canSubscribe: true,
         canPublishData: false,
-        // Mic, camera and screen only; a modified client cannot publish anything else.
-        canPublishSources: [TrackSource.MICROPHONE, TrackSource.CAMERA, TrackSource.SCREEN_SHARE],
+        // Mic, camera, screen and its sound only; a modified client cannot publish anything else.
+        canPublishSources: [
+          TrackSource.MICROPHONE,
+          TrackSource.CAMERA,
+          TrackSource.SCREEN_SHARE,
+          TrackSource.SCREEN_SHARE_AUDIO,
+        ],
       });
       return { url: config.url, token: await token.toJwt() };
     },

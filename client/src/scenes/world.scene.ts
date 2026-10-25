@@ -240,7 +240,8 @@ export class WorldScene extends Phaser.Scene {
     this.voicePanel.onToggleScreen(async (on) => {
       // The desktop shell has no built-in picker, so ours runs first. Browsers use their own.
       const bridge = desktopBridge();
-      if (on && bridge) await this.pickScreen(bridge);
+      // Desktop: the picker asks about sound. Browsers: ask for it and let their own prompt decide.
+      const sound = on && bridge ? await this.pickScreen(bridge) : true;
       if (!on) {
         await this.voice?.setScreenShareEnabled(false);
         return;
@@ -255,7 +256,7 @@ export class WorldScene extends Phaser.Scene {
         throw new DOMException("not allowed to present", "NotAllowedError");
       }
       try {
-        await this.voice?.setScreenShareEnabled(true);
+        await this.voice?.setScreenShareEnabled(true, sound);
       } catch (err) {
         void this.connection?.setPresenting(false);
         throw err;
@@ -1401,10 +1402,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // Arrow keys belong to the picker while it is open, not to the avatar.
-  private async pickScreen(bridge: DesktopBridge) {
+  private async pickScreen(bridge: DesktopBridge): Promise<boolean> {
     this.setGameInput(false);
     try {
-      await chooseScreenSource(bridge);
+      return await chooseScreenSource(bridge);
     } finally {
       this.setGameInput(true);
     }

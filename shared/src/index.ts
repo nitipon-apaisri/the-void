@@ -540,6 +540,6 @@ export interface ScreenSourceList {
 export interface DesktopBridge {
   listScreenSources(): Promise<ScreenSourceList>;
   /** Must be called with an id from the latest list, right before getDisplayMedia. */
-  selectScreenSource(id: string): Promise<void>;
+  selectScreenSource(id: string, audio: boolean): Promise<void>;
   openScreenSettings(): Promise<void>;
 }

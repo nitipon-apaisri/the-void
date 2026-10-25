@@ -7,7 +7,7 @@ describe("screen selection", () => {
     const selection = createScreenSelection();
     selection.offer(["screen:1:0", "window:2:0"]);
     expect(selection.choose("window:2:0")).toBe(true);
-    expect(selection.take()).toBe("window:2:0");
+    expect(selection.take()).toEqual({ id: "window:2:0", audio: false });
     expect(selection.take()).toBeUndefined();
   });
 
@@ -34,5 +34,14 @@ describe("screen selection", () => {
     selection.offer(["screen:2:0"]);
     expect(selection.take()).toBeUndefined();
     expect(selection.choose("screen:1:0")).toBe(false);
+  });
+});
+
+describe("screen selection sound", () => {
+  it("carries the sound choice with the pick", () => {
+    const selection = createScreenSelection();
+    selection.offer(["screen:1:0"]);
+    selection.choose("screen:1:0", true);
+    expect(selection.take()).toEqual({ id: "screen:1:0", audio: true });
   });
 });

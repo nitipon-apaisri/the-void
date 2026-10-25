@@ -17,7 +17,7 @@ import { MAX_SCREEN_SHARES } from "../config/env";
 // systems
 import { pickScreenSharers } from "../systems/screen-share";
 
-export type MediaKind = "audio" | "video" | "screen";
+export type MediaKind = "audio" | "video" | "screen" | "screen-audio";
 export type DeviceKind = "audioinput" | "videoinput" | "audiooutput";
 
 export interface MediaDevice {
@@ -47,7 +47,7 @@ export interface VoiceConnection {
   /** Empty `deviceId` means the system default. Takes effect now if the device is in use. */
   setDevice(kind: DeviceKind, deviceId: string): Promise<void>;
   /** Rejects if the person cancels the picker or the OS denies capture. */
-  setScreenShareEnabled(on: boolean): Promise<void>;
+  setScreenShareEnabled(on: boolean, audio?: boolean): Promise<void>;
   /** An audio, camera or screen element for a nearby player became available. */
   onMedia(cb: (playerId: string, el: HTMLMediaElement, kind: MediaKind) => void): void;
   onMediaRemoved(cb: (playerId: string, el: HTMLMediaElement) => void): void;
@@ -111,14 +111,14 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
       ),
     )
     .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-      // Shared-screen audio is not published by us, so there is nothing to play for it.
-      if (track.source === Track.Source.ScreenShareAudio) return;
       const kind: MediaKind =
         track.source === Track.Source.ScreenShare
           ? "screen"
-          : track.kind === Track.Kind.Audio
-            ? "audio"
-            : "video";
+          : track.source === Track.Source.ScreenShareAudio
+            ? "screen-audio"
+            : track.kind === Track.Kind.Audio
+              ? "audio"
+              : "video";
       if (track.kind !== Track.Kind.Audio && track.kind !== Track.Kind.Video) return;
       onMedia(participant.identity, track.attach(), kind);
     })
@@ -149,9 +149,8 @@ export async function connectVoice({ url, token }: VoiceToken): Promise<VoiceCon
     },
     setMicEnabled: async (on) => void (await room.localParticipant.setMicrophoneEnabled(on)),
     setCameraEnabled: async (on) => void (await room.localParticipant.setCameraEnabled(on)),
-    // No audio: system audio capture differs by OS and is out of scope for now.
-    setScreenShareEnabled: async (on) =>
-      void (await room.localParticipant.setScreenShareEnabled(on, { audio: false })),
+    setScreenShareEnabled: async (on, audio = false) =>
+      void (await room.localParticipant.setScreenShareEnabled(on, { audio })),
     async setDevice(kind, deviceId) {
       try {
         await room.switchActiveDevice(kind, deviceId || "default");

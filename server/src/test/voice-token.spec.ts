@@ -38,8 +38,9 @@ describe("createVoiceTokenService", () => {
     expect(claims.video).toMatchObject({ room: "void-space-1", roomJoin: true, canPublish: true });
     expect(claims.video.roomAdmin).toBeUndefined();
     expect(claims.video.canPublishData).toBe(false);
-    expect(claims.video.canPublishSources).toHaveLength(3);
+    expect(claims.video.canPublishSources).toHaveLength(4);
     expect(claims.video.canPublishSources).toContain("screen_share");
+    expect(claims.video.canPublishSources).toContain("screen_share_audio");
     expect(claims.exp - claims.nbf).toBeLessThanOrEqual(600);
   });
 });

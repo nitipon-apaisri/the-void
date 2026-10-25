@@ -25,6 +25,8 @@ const STYLES = `
 .void-picker__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #000; border-radius: 8px; }
 .void-picker__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px 2px; }
 .void-picker__note { margin: 0; padding: 10px 14px; border-radius: var(--v-radius-sm); background: rgb(251 191 36 / 0.14); color: #fde68a; }
+.void-picker__sound { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; cursor: pointer; }
+.void-picker__sound small { grid-column: 2; color: var(--v-muted); }
 .void-picker__actions { display: flex; gap: 8px; justify-content: flex-end; }
 .void-picker button.plain { padding: 8px 18px; border-radius: 999px; border: 1px solid var(--v-line);
   background: var(--v-field); color: var(--v-text); cursor: pointer; font: inherit; font-weight: 500; }
@@ -62,9 +64,10 @@ function section(title: string, items: ScreenSource[], pick: (id: string) => voi
 /**
  * Desktop only: asks the person which screen or window to share and registers the choice
  * with the shell, so the getDisplayMedia call that follows is answered with it.
+ * Resolves with whether they also chose to share the computer's sound.
  * Rejects with a NotAllowedError if they cancel.
  */
-export async function chooseScreenSource(bridge: DesktopBridge): Promise<void> {
+export async function chooseScreenSource(bridge: DesktopBridge): Promise<boolean> {
   applyTheme();
   injectStyle(STYLE_ID, STYLES);
   const { sources, needsPermission } = await bridge.listScreenSources();
@@ -80,6 +83,18 @@ export async function chooseScreenSource(bridge: DesktopBridge): Promise<void> {
   title.id = "void-picker-title";
   title.textContent = "Share your screen";
   dialog.append(title);
+
+  // Off by default: the sound is everything the computer plays, including the people in this
+  // call, so without headphones they would hear themselves a moment later.
+  const sound = document.createElement("label");
+  sound.className = "void-picker__sound";
+  const soundBox = document.createElement("input");
+  soundBox.type = "checkbox";
+  const soundText = document.createElement("span");
+  soundText.textContent = "Share sound from this computer";
+  const soundHint = document.createElement("small");
+  soundHint.textContent = "Use headphones, or the people you hear will hear themselves.";
+  sound.append(soundBox, soundText, soundHint);
 
   const actions = document.createElement("div");
   actions.className = "void-picker__actions";
@@ -106,23 +121,24 @@ export async function chooseScreenSource(bridge: DesktopBridge): Promise<void> {
   document.body.append(overlay);
   overlay.append(dialog);
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     const finish = (error?: unknown) => {
       document.removeEventListener("keydown", onKey);
       overlay.remove();
       if (error) reject(error);
-      else resolve();
+      else resolve(soundBox.checked);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") finish(cancelled());
     };
-    const pick = (id: string) => bridge.selectScreenSource(id).then(() => finish(), finish);
+    const pick = (id: string) =>
+      bridge.selectScreenSource(id, soundBox.checked).then(() => finish(), finish);
 
     const screens = sources.filter((source) => source.kind === "screen");
     const windows = sources.filter((source) => source.kind === "window");
     if (screens.length) dialog.append(section("Screens", screens, pick));
     if (windows.length) dialog.append(section("Windows", windows, pick));
-    dialog.append(actions);
+    dialog.append(sound, actions);
 
     cancel.addEventListener("click", () => finish(cancelled()));
     document.addEventListener("keydown", onKey);

@@ -50,9 +50,11 @@ export function registerScreenIpc(trustedOrigin: string, selection: ScreenSelect
     };
   });
 
-  ipcMain.handle(DESKTOP_IPC.SELECT_SCREEN, (event, id: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.SELECT_SCREEN, (event, id: unknown, audio: unknown) => {
     assertTrusted(event);
-    if (typeof id !== "string" || !selection.choose(id)) throw new Error("unknown source");
+    if (typeof id !== "string" || !selection.choose(id, audio === true)) {
+      throw new Error("unknown source");
+    }
   });
 
   ipcMain.handle(DESKTOP_IPC.OPEN_SCREEN_SETTINGS, async (event) => {
@@ -61,12 +63,15 @@ export function registerScreenIpc(trustedOrigin: string, selection: ScreenSelect
   });
 
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    const id = selection.take();
+    const pick = selection.take();
     // Deny anything that was not just picked in our own picker.
-    if (!id || originOf(request.frame?.url ?? "") !== trustedOrigin) return callback({});
+    if (!pick || originOf(request.frame?.url ?? "") !== trustedOrigin) return callback({});
     const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
-    const source = sources.find((candidate) => candidate.id === id);
-    // No audio: system audio capture differs by OS and is out of scope for now.
-    callback(source ? { video: source } : {});
+    const source = sources.find((candidate) => candidate.id === pick.id);
+    // Sound is the sharer's choice: it carries everything the computer plays, other people's
+    // voices from this app included. "loopback" is system audio on Windows and recent macOS.
+    callback(
+      source ? { video: source, ...(pick.audio ? { audio: "loopback" as const } : {}) } : {},
+    );
   });
 }

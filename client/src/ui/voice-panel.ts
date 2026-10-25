@@ -134,12 +134,12 @@ export function createVoicePanel(): VoicePanel {
     },
     removeMedia(playerId, el) {
       el.remove();
-      for (const kind of ["audio", "video", "screen"]) {
+      for (const kind of ["audio", "video", "screen", "screen-audio"]) {
         if (media.get(key(playerId, kind)) === el) media.delete(key(playerId, kind));
       }
     },
     removePlayer(playerId) {
-      for (const kind of ["audio", "video", "screen"]) {
+      for (const kind of ["audio", "video", "screen", "screen-audio"]) {
         media.get(key(playerId, kind))?.remove();
         media.delete(key(playerId, kind));
       }
