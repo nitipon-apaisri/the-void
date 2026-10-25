@@ -1,8 +1,10 @@
 // shared
+import { MODERATE_ACTIONS } from "@void/shared";
 import type {
   AddZonePayload,
   AnswerKnockPayload,
   LockZonePayload,
+  ModeratePayload,
   PresentPayload,
   RemoveZonePayload,
 } from "@void/shared";
@@ -37,6 +39,16 @@ export function parseAnswerKnock(payload: unknown): AnswerKnockPayload | null {
   const { knockerId, allow } = payload;
   return typeof knockerId === "string" && knockerId.length <= 64 && typeof allow === "boolean"
     ? { knockerId, allow }
+    : null;
+}
+
+export function parseModerate(payload: unknown): ModeratePayload | null {
+  if (!isObject(payload)) return null;
+  const { userId, action } = payload;
+  return typeof userId === "string" &&
+    UUID.test(userId) &&
+    MODERATE_ACTIONS.includes(action as ModeratePayload["action"])
+    ? ({ userId, action } as ModeratePayload)
     : null;
 }
 

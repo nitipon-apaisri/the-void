@@ -185,6 +185,10 @@ export const MESSAGES = {
   // Request/response: start or stop presenting (sharing your screen to the room). Refused when
   // someone else already presents in the private room you are in.
   PRESENT: "present",
+  // Request/response: an owner or admin mutes someone's mic or ends their presentation.
+  MODERATE: "moderate",
+  /** Server to the one moderated: switch the mic off (or end the share) and say who did it. */
+  MODERATED: "moderated",
 } as const;
 
 export interface VoiceToken {
@@ -392,6 +396,10 @@ export const canRemoveMember = (actor: SpaceRole, target: SpaceRole, self: boole
   if (actor === "owner") return target !== "owner";
   return actor === "admin" && target === "member";
 };
+
+/** Muting or ending someone's presentation follows the removal rules: an admin can only act on members. */
+export const canModerateMember = (actor: SpaceRole, target: SpaceRole): boolean =>
+  canRemoveMember(actor, target, false);
 
 /** Banning takes someone out for good, so it follows the removal rules, and never applies to yourself. */
 export const canBanMember = (actor: SpaceRole, target: SpaceRole): boolean =>

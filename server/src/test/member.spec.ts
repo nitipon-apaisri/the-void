@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LOOK,
   canBanMember,
+  canModerateMember,
   canChangeRole,
   canRemoveMember,
   canRemovePiece,
@@ -219,5 +220,16 @@ describe("createMemberService", () => {
     await service.unban(ADMIN, SPACE, ADA);
     expect(banned.has(ADA)).toBe(false);
     await expect(service.unban(ADMIN, SPACE, ADA)).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("canModerateMember", () => {
+  it("lets an owner act on anyone else and an admin only on members", () => {
+    expect(canModerateMember("owner", "admin")).toBe(true);
+    expect(canModerateMember("owner", "member")).toBe(true);
+    expect(canModerateMember("admin", "member")).toBe(true);
+    expect(canModerateMember("admin", "admin")).toBe(false);
+    expect(canModerateMember("admin", "owner")).toBe(false);
+    expect(canModerateMember("member", "member")).toBe(false);
   });
 });

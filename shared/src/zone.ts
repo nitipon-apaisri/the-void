@@ -78,6 +78,20 @@ export function zoneError(
   return overlaps ? "that overlaps another room" : undefined;
 }
 
+export type ModerateAction = "mute" | "stop-presenting";
+export const MODERATE_ACTIONS: readonly ModerateAction[] = ["mute", "stop-presenting"];
+
+export interface ModeratePayload {
+  userId: string;
+  action: ModerateAction;
+}
+
+/** Server to the moderated player. */
+export interface ModeratedPayload {
+  action: ModerateAction;
+  by: string;
+}
+
 export interface PresentPayload {
   on: boolean;
 }

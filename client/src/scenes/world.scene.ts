@@ -33,6 +33,7 @@ import {
   type MapTable,
   type Position,
   type InviteResult,
+  type ModerateAction,
   type SpaceMember,
   type SpaceRole,
   type SpaceSummary,
@@ -354,6 +355,7 @@ export class WorldScene extends Phaser.Scene {
       onSetRole: (member, role) => this.changeRole(member, role),
       onRemove: (member) => this.removeMember(member),
       onBan: (member) => this.banMember(member),
+      onModerate: (member, action) => this.moderate(member, action),
       onUnban: (userId) => this.unbanMember(userId),
       onLeave: () => void this.leaveSpace(),
     });
@@ -607,6 +609,19 @@ export class WorldScene extends Phaser.Scene {
       throw err;
     }
     await this.loadMembers();
+  }
+
+  private async moderate(member: SpaceMember, action: ModerateAction) {
+    try {
+      await this.connection?.moderate(member.userId, action);
+      this.toast.show(
+        action === "mute" ? `Asked ${member.name} to mute` : `${member.name} stopped presenting`,
+        "info",
+        2500,
+      );
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 3000);
+    }
   }
 
   private async banMember(member: SpaceMember) {
@@ -1263,6 +1278,18 @@ export class WorldScene extends Phaser.Scene {
         if (wave.toId === connection.sessionId) {
           this.toast.show(`${wave.name} waved at you 👋`, "info", 3500);
         }
+      });
+      connection.onModerated(({ action, by }) => {
+        if (action === "mute") {
+          void this.voice?.setMicEnabled(false).catch(() => {});
+          this.voicePanel.setMicOn(false);
+        }
+        // Ending the share follows from the server clearing our presenting flag.
+        this.toast.show(
+          action === "mute" ? `${by} muted you` : `${by} ended your presentation`,
+          "info",
+          3500,
+        );
       });
       connection.onMembersChanged(() => void this.loadMembers());
       connection.onRemoved(() => {

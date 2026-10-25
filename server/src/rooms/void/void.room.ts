@@ -4,6 +4,7 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 // shared
 import {
   canEmptySpace,
+  canModerateMember,
   canRemovePiece,
   DEFAULT_SIZE,
   DEFAULT_TEMPLATE,
@@ -61,6 +62,7 @@ import {
   parseAddZone,
   parseAnswerKnock,
   parseLockZone,
+  parseModerate,
   parsePresent,
   presenterIn,
   parseRemoveZone,
@@ -205,6 +207,23 @@ export class VoidRoom extends Room<{ state: VoidState }> {
         if (other) throw new Error(`${other} is already presenting here`);
       }
       player.presenting = request.on;
+      return true;
+    });
+    this.answer(MESSAGES.MODERATE, (client, payload: unknown) => {
+      const actor = this.state.players.get(client.sessionId);
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseModerate(payload);
+      if (!actor || !account || !request) throw new Error("invalid request");
+      const target = this.clients.find(
+        (c) => (c as Client<{ auth: Account }>).auth?.userId === request.userId,
+      );
+      const targetAccount = (target as Client<{ auth: Account }> | undefined)?.auth;
+      const victim = target && this.state.players.get(target.sessionId);
+      if (!target || !targetAccount || !victim) throw new Error("that person is not here");
+      if (!canModerateMember(account.role, targetAccount.role)) throw new Error("not allowed");
+      // The mic itself is theirs: this only asks their client to switch it off.
+      if (request.action === "stop-presenting") victim.presenting = false;
+      target.send(MESSAGES.MODERATED, { action: request.action, by: actor.name });
       return true;
     });
     this.answer(MESSAGES.ANSWER_KNOCK, (client, payload: unknown) => {

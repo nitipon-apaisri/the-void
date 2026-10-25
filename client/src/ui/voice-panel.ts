@@ -23,6 +23,8 @@ export interface VoicePanel {
   onToggleScreen(cb: (on: boolean) => Promise<void>): void;
   /** Syncs the button when sharing starts or stops outside it (e.g. the browser's stop button). */
   setScreenSharing(on: boolean): void;
+  /** Show the mic as on or off when something other than the button changed it. */
+  setMicOn(on: boolean): void;
   destroy(): void;
 }
 
@@ -164,6 +166,7 @@ export function createVoicePanel(): VoicePanel {
     onToggleMic: (cb) => (toggleMic = cb),
     onToggleCamera: (cb) => (toggleCamera = cb),
     onToggleScreen: (cb) => (toggleScreen = cb),
+    setMicOn: (on) => mic.setAttribute("aria-pressed", String(on)),
     setScreenSharing: (on) => screen.setAttribute("aria-pressed", String(on)),
     destroy: () => root.remove(),
   };

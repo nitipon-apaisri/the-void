@@ -4,6 +4,7 @@ import {
   parseAddZone,
   parseAnswerKnock,
   parseLockZone,
+  parseModerate,
   parsePresent,
   presenterIn,
   parseRemoveZone,
@@ -95,5 +96,24 @@ describe("presenterIn", () => {
 
   it("has no limit on the open floor", () => {
     expect(presenterIn(players, "", me)).toBeUndefined();
+  });
+});
+
+describe("parseModerate", () => {
+  const userId = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a user id with a known action", () => {
+    expect(parseModerate({ userId, action: "mute" })).toEqual({ userId, action: "mute" });
+    expect(parseModerate({ userId, action: "stop-presenting" })).toEqual({
+      userId,
+      action: "stop-presenting",
+    });
+  });
+
+  it("refuses anything else", () => {
+    expect(parseModerate(null)).toBeNull();
+    expect(parseModerate({ userId: "nope", action: "mute" })).toBeNull();
+    expect(parseModerate({ userId, action: "ban" })).toBeNull();
+    expect(parseModerate({ userId })).toBeNull();
   });
 });

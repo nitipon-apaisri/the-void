@@ -19,6 +19,9 @@ import {
   type KnockPayload,
   type KnockResultPayload,
   type LockZonePayload,
+  type ModerateAction,
+  type ModeratedPayload,
+  type ModeratePayload,
   type PresentPayload,
   type RemoveZonePayload,
   type WavedPayload,
@@ -73,6 +76,10 @@ export interface VoidConnection {
   onZones(cb: (zones: MapZone[]) => void): void;
   /** Claim or give up the stage. Rejects with the reason (someone else presents in this room). */
   setPresenting(on: boolean): Promise<void>;
+  /** Owners and admins: ask someone to mute their mic or end their presentation. */
+  moderate(userId: string, action: ModerateAction): Promise<void>;
+  /** An owner or admin muted us or ended our presentation. */
+  onModerated(cb: (moderated: ModeratedPayload) => void): void;
   /** Lock or unlock the room you stand in. Rejects with the server's reason. */
   lockZone(id: string, locked: boolean): Promise<void>;
   /** Anyone inside a locked room may let a knocker in or turn them away. */
@@ -225,6 +232,10 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     setPresenting: async (on) => {
       await room.request(MESSAGES.PRESENT, { on } satisfies PresentPayload);
     },
+    moderate: async (userId, action) => {
+      await room.request(MESSAGES.MODERATE, { userId, action } satisfies ModeratePayload);
+    },
+    onModerated: (cb) => room.onMessage(MESSAGES.MODERATED, cb),
     lockZone: async (id, locked) => {
       await room.request(MESSAGES.LOCK_ZONE, { id, locked } satisfies LockZonePayload);
     },

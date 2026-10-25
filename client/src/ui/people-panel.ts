@@ -2,9 +2,11 @@
 import {
   canBanMember,
   canChangeRole,
+  canModerateMember,
   canRemoveMember,
   type BannedMember,
   type JoinRequest,
+  type ModerateAction,
   type SpaceMember,
   type SpaceRole,
 } from "@void/shared";
@@ -46,6 +48,8 @@ export interface PeoplePanelActions {
   onSetRole(member: SpaceMember, role: SpaceRole): Promise<void>;
   onRemove(member: SpaceMember): Promise<void>;
   onBan(member: SpaceMember): Promise<void>;
+  /** Ask an online person to switch their mic off, or to stop presenting. */
+  onModerate(member: SpaceMember, action: ModerateAction): Promise<void>;
   onUnban(userId: string): Promise<void>;
   /** The viewer leaves the space (any role but owner). */
   onLeave(): void;
@@ -158,6 +162,15 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     setRole("admin", "Make admin");
     setRole("member", "Make member");
     setRole("owner", "Make owner");
+    if (online.has(member.userId) && canModerateMember(viewer.role, member.role)) {
+      options.push({ label: "Mute", run: () => actions.onModerate(member, "mute") });
+      if (presenting.has(member.userId)) {
+        options.push({
+          label: "Stop presenting",
+          run: () => actions.onModerate(member, "stop-presenting"),
+        });
+      }
+    }
     if (canRemoveMember(viewer.role, member.role, false)) {
       options.push({ label: "Remove", danger: true, run: () => actions.onRemove(member) });
     }
