@@ -13,6 +13,8 @@ import { createMainWindow } from "./windows/main-window";
 const CLIENT_URL = app.isPackaged ? APP_URL : (process.env.CLIENT_URL ?? "http://localhost:5173");
 const CLIENT_ORIGIN = originOf(CLIENT_URL) ?? "";
 
+// Development runs the stock Electron bundle, so name the app here; a packaged one already has it.
+app.setName("The Void");
 registerAppScheme();
 
 // Permissions are granted only to our own page.

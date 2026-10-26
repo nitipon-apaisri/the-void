@@ -91,7 +91,7 @@ Open two browser windows, create two accounts, make an invite link in the People
 
 ### Notifications on macOS (development)
 
-The npm copy of Electron is only linker-signed, so macOS never lists it under System Settings > Notifications and refuses its notifications. Sign it once on your machine: `codesign --force --deep --sign - node_modules/electron/dist/Electron.app`, restart `npm run dev:desktop`, click **Send a test notification** in Settings > System and allow it. `npm install` can undo this; a properly signed release build does not need it.
+The npm copy of Electron is only linker-signed, so macOS never lists it under System Settings > Notifications and refuses its notifications. Sign it once on your machine: `codesign --force --deep --sign - node_modules/electron/dist/Electron.app`, restart `npm run dev:desktop`, click **Send a test notification** in Settings > System and allow it. To show The Void's name and icon instead of Electron's, also run `/usr/libexec/PlistBuddy -c "Set :CFBundleName 'The Void'" node_modules/electron/dist/Electron.app/Contents/Info.plist`, copy an `.icns` made from `desktop/build/icon.png` over `Electron.app/Contents/Resources/electron.icns`, and sign again (macOS caches icons, so a log out may be needed). `npm install` can undo all of this; a properly signed release build does not need it.
 
 ### The art
 
