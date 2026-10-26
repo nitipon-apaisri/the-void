@@ -47,6 +47,7 @@ describe("sanitizeSettings", () => {
         zoom: "2",
         maxFps: 144,
         showNames: "yes",
+        notifications: 1,
       },
       defaults,
     );
@@ -60,6 +61,7 @@ describe("sanitizeSettings", () => {
     });
     expect(sanitizeSettings({ zoom: 2.5 }, defaults).zoom).toBe(defaults.zoom);
     expect(sanitizeSettings({ showNames: false }, defaults).showNames).toBe(false);
+    expect(sanitizeSettings({ notifications: false }, defaults).notifications).toBe(false);
   });
 });
 

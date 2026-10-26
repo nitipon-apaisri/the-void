@@ -76,6 +76,7 @@ import { readDirection } from "../systems/controls";
 import { findPath, followPath } from "../systems/pathfinding";
 import { stepPosition } from "../systems/movement";
 import { audienceIds } from "../systems/audience";
+import { shouldNotify } from "../systems/notification-policy";
 import { nearbyIds, sortByDistance } from "../systems/proximity";
 import { defaultSettings, type Settings } from "../systems/settings";
 import { audibleSpeakers } from "../systems/speaking";
@@ -106,6 +107,7 @@ import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
+import { notify } from "../utils/notify";
 import { buildInviteLink, inviteBase, takeInviteFromUrl } from "../utils/invite-link";
 import { tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
@@ -1288,6 +1290,7 @@ export class WorldScene extends Phaser.Scene {
         sprite?.wave();
         if (wave.toId === connection.sessionId) {
           this.toast.show(`${wave.name} waved at you 👋`, "info", 3500);
+          this.alert(`${wave.name} waved at you 👋`, "The Void");
         }
       });
       connection.onModerated(({ action, by }) => {
@@ -1317,7 +1320,11 @@ export class WorldScene extends Phaser.Scene {
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));
       connection.onZones((zones) => this.syncZones(zones));
-      connection.onKnock((knock) => this.roomBar?.addKnock(knock.knockerId, knock.name));
+      connection.onKnock((knock) => {
+        this.roomBar?.addKnock(knock.knockerId, knock.name);
+        const room = this.zones.get(this.myZone)?.name ?? "your room";
+        this.alert(`${knock.name} is knocking on ${room}`, "Open The Void to let them in");
+      });
       connection.onKnockResult((r) => this.knockResult(r.knockerId, r.zoneId, r.result));
       this.decorate?.setAvailable(true, this.space ? canEmptySpace(this.space.role) : false);
       void this.startVoice(connection);
@@ -1497,6 +1504,14 @@ export class WorldScene extends Phaser.Scene {
     this.refreshRoomBar();
     const name = this.zones.get(zone)?.name;
     this.toast.show(name ? `${name}: only people in here hear you` : "Left the room", "info", 2500);
+  }
+
+  // A system notification, when the window is not in front (the toast and card cover that case).
+  private alert(title: string, body: string) {
+    const focused = document.hasFocus();
+    if (shouldNotify({ enabled: this.settings.notifications, status: this.myStatus, focused })) {
+      notify(title, body);
+    }
   }
 
   private async chooseStatus(status: PlayerStatus) {

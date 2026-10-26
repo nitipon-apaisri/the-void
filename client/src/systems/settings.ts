@@ -15,6 +15,8 @@ export interface Settings {
   /** Frame rate cap. 30 saves battery on laptops. */
   maxFps: number;
   showNames: boolean;
+  /** System notifications for waves and knocks while the app is in the background. */
+  notifications: boolean;
 }
 
 export const ZOOM_LEVELS = [0.5, 0.75, 1, 1.5, 2, 3] as const;
@@ -36,6 +38,7 @@ export const defaultSettings = (proximityTiles: number): Settings => ({
   zoom: 1,
   maxFps: 60,
   showNames: true,
+  notifications: true,
 });
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
@@ -66,5 +69,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     zoom: oneOf(saved.zoom, ZOOM_LEVELS, defaults.zoom),
     maxFps: oneOf(saved.maxFps, FPS_OPTIONS, defaults.maxFps),
     showNames: typeof saved.showNames === "boolean" ? saved.showNames : defaults.showNames,
+    notifications:
+      typeof saved.notifications === "boolean" ? saved.notifications : defaults.notifications,
   };
 }

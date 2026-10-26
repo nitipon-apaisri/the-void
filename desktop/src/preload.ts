@@ -6,6 +6,7 @@ import { DESKTOP_IPC, type DesktopBridge } from "@void/shared";
 const bridge: DesktopBridge = {
   listScreenSources: () => ipcRenderer.invoke(DESKTOP_IPC.LIST_SCREENS),
   selectScreenSource: (id, audio) => ipcRenderer.invoke(DESKTOP_IPC.SELECT_SCREEN, id, audio),
+  notify: (title, body) => ipcRenderer.invoke(DESKTOP_IPC.NOTIFY, title, body),
   openScreenSettings: () => ipcRenderer.invoke(DESKTOP_IPC.OPEN_SCREEN_SETTINGS),
 };
 

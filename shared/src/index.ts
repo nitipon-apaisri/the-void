@@ -524,6 +524,7 @@ export const DESKTOP_IPC = {
   LIST_SCREENS: "screen:list",
   SELECT_SCREEN: "screen:select",
   OPEN_SCREEN_SETTINGS: "screen:open-settings",
+  NOTIFY: "notify:show",
 } as const;
 
 export interface ScreenSource {
@@ -540,9 +541,18 @@ export interface ScreenSourceList {
   needsPermission: boolean;
 }
 
+/**
+ * How a notification request ended. "shown" means the system accepted it; macOS can still drop
+ * it silently when the app has no permission, which "unconfirmed" (no word back) hints at;
+ * "denied" is the system saying outright that this app may not notify.
+ */
+export type NotifyResult = "shown" | "unsupported" | "throttled" | "unconfirmed" | "denied";
+
 export interface DesktopBridge {
   listScreenSources(): Promise<ScreenSourceList>;
   /** Must be called with an id from the latest list, right before getDisplayMedia. */
   selectScreenSource(id: string, audio: boolean): Promise<void>;
   openScreenSettings(): Promise<void>;
+  /** A system notification; clicking it brings the app to the front. */
+  notify(title: string, body: string): Promise<NotifyResult>;
 }

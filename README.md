@@ -14,7 +14,7 @@ A self-built 2D virtual workspace, in the style of Gather, for about 100 people 
 - **Waving**: when someone is within four tiles, a button lets you wave at them.
 - **Map controls**: a mini map and floating buttons for zoom and "show me". On a trackpad, pinch or two-finger scroll to zoom; hold and drag the map to pan. Moving, clicking to walk or "show me" brings the view back to you.
 - **People panel**: everyone in the space, online and offline, with search. Click someone who is online to walk to them.
-- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles (a shared screen opens large for everyone who can see it, one presenter at a time in a private room; desktop sharers can add the computer's sound); the range is a setting. A ring at someone's feet and a highlight on their video show who is talking. Private rooms: inside one, everyone in it hears and sees each other wherever they stand, and nobody outside does. The office and open plan have meeting rooms, and owners and admins can draw their own in any space. Anyone inside can lock a room; others knock and someone inside lets them in (the owner walks in anywhere). Owners and admins can mute someone's mic or end their presentation from the People panel (admins only for members). A status dot in the top bar sets Away or Do not disturb; on Do not disturb nobody outside a room hears, sees or waves at you.
+- **Proximity voice and video**: you hear and see only people within a few tiles. Mic, camera and screen share toggles (a shared screen opens large for everyone who can see it, one presenter at a time in a private room; desktop sharers can add the computer's sound); the range is a setting. A ring at someone's feet and a highlight on their video show who is talking. Private rooms: inside one, everyone in it hears and sees each other wherever they stand, and nobody outside does. The office and open plan have meeting rooms, and owners and admins can draw their own in any space. Anyone inside can lock a room; others knock and someone inside lets them in (the owner walks in anywhere). Owners and admins can mute someone's mic or end their presentation from the People panel (admins only for members). A status dot in the top bar sets Away or Do not disturb; on Do not disturb nobody outside a room hears, sees or waves at you. Waves and knocks on your private room raise a system notification when the app is in the background (a setting).
 - **Character customize**: five layered parts (skin, eyes, outfit, hair, extra), each with a style and a colour.
 - **Settings**: range, mic, camera and speaker choice, volume, movement keys, zoom, frame rate cap.
 
@@ -88,6 +88,10 @@ npm run dev:desktop             # or: build and launch the Electron app
 ```
 
 Open two browser windows, create two accounts, make an invite link in the People panel with the first and open it with the second. Walk close together to hear each other.
+
+### Notifications on macOS (development)
+
+The npm copy of Electron is only linker-signed, so macOS never lists it under System Settings > Notifications and refuses its notifications. Sign it once on your machine: `codesign --force --deep --sign - node_modules/electron/dist/Electron.app`, restart `npm run dev:desktop`, click **Send a test notification** in Settings > System and allow it. `npm install` can undo this; a properly signed release build does not need it.
 
 ### The art
 

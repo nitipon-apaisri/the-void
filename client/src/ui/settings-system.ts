@@ -12,6 +12,9 @@ import {
 // net
 import type { DeviceKind } from "../net/voice-connection";
 
+// utils
+import { NOTIFY_OUTCOME_TEXT, notify, requestNotifyPermission } from "../utils/notify";
+
 import type { SettingsContext } from "./settings-window";
 
 const DEVICE_FIELDS: {
@@ -76,6 +79,13 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
       <label class="row" style="grid-auto-flow: column; justify-content: start">
         <input type="checkbox" name="names" /> Show player names
       </label>
+      <label class="row" style="grid-auto-flow: column; justify-content: start">
+        <input type="checkbox" name="notifications" /> Notify me of waves and knocks when The Void is in the background
+      </label>
+      <div class="row" style="grid-auto-flow: column; justify-content: start; align-items: center; gap: 10px">
+        <button type="button" data-test-notify>Send a test notification</button>
+        <small data-test-notify-result role="status"></small>
+      </div>
       <p>Whole-number zoom keeps the pixels sharp. A lower frame rate saves battery.</p>
     </section>
     <section>
@@ -98,6 +108,7 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
   const zoom = q<HTMLSelectElement>("select[name=zoom]");
   const fps = q<HTMLSelectElement>("select[name=fps]");
   const names = q<HTMLInputElement>("input[name=names]");
+  const notifications = q<HTMLInputElement>("input[name=notifications]");
 
   for (const { value, label } of KEY_OPTIONS) keys.append(new Option(label, value));
   for (const level of ZOOM_LEVELS) zoom.append(new Option(`${level}×`, String(level)));
@@ -112,6 +123,7 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
     zoom.value = String(current.zoom);
     fps.value = String(current.maxFps);
     names.checked = current.showNames;
+    notifications.checked = current.notifications;
   };
 
   range.addEventListener("input", () => {
@@ -126,6 +138,21 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
   zoom.addEventListener("change", () => change({ zoom: Number(zoom.value) }));
   fps.addEventListener("change", () => change({ maxFps: Number(fps.value) }));
   names.addEventListener("change", () => change({ showNames: names.checked }));
+  const testButton = q<HTMLButtonElement>("[data-test-notify]");
+  const testResult = q<HTMLElement>("[data-test-notify-result]");
+  testButton.addEventListener("click", async () => {
+    testButton.disabled = true;
+    testResult.textContent = "Sending…";
+    // Browsers ask for permission on a click, and this is one.
+    requestNotifyPermission();
+    const outcome = await notify("The Void", "This is a test notification");
+    testResult.textContent = NOTIFY_OUTCOME_TEXT[outcome];
+    testButton.disabled = false;
+  });
+  notifications.addEventListener("change", () => {
+    change({ notifications: notifications.checked });
+    if (notifications.checked) requestNotifyPermission();
+  });
 
   const selects = DEVICE_FIELDS.map(({ kind, key, label }) => {
     const wrap = document.createElement("label");
@@ -159,6 +186,7 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
       zoom: ctx.defaults.zoom,
       maxFps: ctx.defaults.maxFps,
       showNames: ctx.defaults.showNames,
+      notifications: ctx.defaults.notifications,
     });
     showValues();
     for (const { select, key } of selects) select.value = current[key];

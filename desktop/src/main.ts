@@ -2,6 +2,7 @@ import { app, BrowserWindow, session } from "electron";
 import path from "node:path";
 
 import { createScreenSelection } from "./ipc/screen-selection";
+import { registerNotifyIpc } from "./ipc/notify";
 import { registerScreenIpc } from "./ipc/screen";
 import { originOf } from "./origin";
 import { APP_URL, registerAppScheme, serveApp } from "./windows/app-protocol";
@@ -24,11 +25,11 @@ app.whenReady().then(() => {
     ),
   );
   registerScreenIpc(CLIENT_ORIGIN, createScreenSelection());
-  createMainWindow(CLIENT_URL);
-  app.on(
-    "activate",
-    () => BrowserWindow.getAllWindows().length === 0 && createMainWindow(CLIENT_URL),
-  );
+  let mainWindow = createMainWindow(CLIENT_URL);
+  registerNotifyIpc(CLIENT_ORIGIN, () => mainWindow);
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createMainWindow(CLIENT_URL);
+  });
 });
 
 app.on("window-all-closed", () => process.platform !== "darwin" && app.quit());

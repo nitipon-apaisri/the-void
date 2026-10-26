@@ -11,6 +11,7 @@ import { DESKTOP_IPC, type ScreenSourceList } from "@void/shared";
 
 import { originOf } from "../origin";
 import type { ScreenSelection } from "./screen-selection";
+import { assertTrusted } from "./trusted";
 
 const THUMBNAIL = { width: 320, height: 200 };
 const MAC_SCREEN_SETTINGS =
@@ -21,16 +22,10 @@ const MAC_SCREEN_SETTINGS =
  * process which source was chosen, then calls getDisplayMedia, which this handler answers.
  */
 export function registerScreenIpc(trustedOrigin: string, selection: ScreenSelection) {
-  // Only our own page, in its top frame, may use these channels.
-  const assertTrusted = (event: IpcMainInvokeEvent) => {
-    const frame = event.senderFrame;
-    if (!frame || frame !== event.sender.mainFrame || originOf(frame.url) !== trustedOrigin) {
-      throw new Error("untrusted sender");
-    }
-  };
+  const trust = (event: IpcMainInvokeEvent) => assertTrusted(event, trustedOrigin);
 
   ipcMain.handle(DESKTOP_IPC.LIST_SCREENS, async (event): Promise<ScreenSourceList> => {
-    assertTrusted(event);
+    trust(event);
     const sources = await desktopCapturer.getSources({
       types: ["screen", "window"],
       thumbnailSize: THUMBNAIL,
@@ -51,14 +46,14 @@ export function registerScreenIpc(trustedOrigin: string, selection: ScreenSelect
   });
 
   ipcMain.handle(DESKTOP_IPC.SELECT_SCREEN, (event, id: unknown, audio: unknown) => {
-    assertTrusted(event);
+    trust(event);
     if (typeof id !== "string" || !selection.choose(id, audio === true)) {
       throw new Error("unknown source");
     }
   });
 
   ipcMain.handle(DESKTOP_IPC.OPEN_SCREEN_SETTINGS, async (event) => {
-    assertTrusted(event);
+    trust(event);
     if (process.platform === "darwin") await shell.openExternal(MAC_SCREEN_SETTINGS);
   });
 
