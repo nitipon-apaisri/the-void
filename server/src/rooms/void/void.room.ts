@@ -3,7 +3,13 @@ import { Room, ServerError, type Client } from "@colyseus/core";
 
 // shared
 import {
+  atPortal,
   canEmptySpace,
+  canManagePortals,
+  MAX_PORTALS,
+  PORTAL_TILES,
+  portalError,
+  type CrossResult,
   canModerateMember,
   canRemovePiece,
   DEFAULT_SIZE,
@@ -46,6 +52,8 @@ import {
 
 import { isUuid, type SpaceRepository } from "../../repositories/space.repository.js";
 import type { FurnitureRepository } from "../../repositories/furniture.repository.js";
+import type { BanRepository } from "../../repositories/ban.repository.js";
+import type { LinkRepository } from "../../repositories/link.repository.js";
 import type { ZoneRepository } from "../../repositories/zone.repository.js";
 import type { TableRepository } from "../../repositories/table.repository.js";
 import type { UserRepository } from "../../repositories/user.repository.js";
@@ -56,6 +64,7 @@ import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
 import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
+import { parseCross, parsePlacePortal, parseRemovePortal } from "./handlers/portal.handler.js";
 import { parseSetStatus } from "./handlers/status.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
 import { ZoneAccess } from "./handlers/zone-access.js";
@@ -68,7 +77,7 @@ import {
   presenterIn,
   parseRemoveZone,
 } from "./handlers/zone.handler.js";
-import { Furniture, Player, TableClaim, VoidState, Zone } from "./void.state.js";
+import { Furniture, Player, Portal, TableClaim, VoidState, Zone } from "./void.state.js";
 
 /** What the server reads from a template's map file. */
 interface SpaceMap {
@@ -88,6 +97,8 @@ interface VoidRoomOptions {
   claims: TableRepository;
   furniture: FurnitureRepository;
   zones: ZoneRepository;
+  links: LinkRepository;
+  bans: BanRepository;
   voiceTokens?: VoiceTokenService;
 }
 
@@ -99,6 +110,8 @@ interface Account {
   name: string;
   look: Look;
   role: SpaceRole;
+  /** Came through a portal from a linked space: not a member, and cannot cross again. */
+  guest: boolean;
   lastX: number | null;
   lastY: number | null;
 }
@@ -153,6 +166,76 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (zoneError(z, this.zoneList(), dims.cols, dims.rows)) continue;
       this.putZone(z.id, this.toZone(this.fromStored(z), true));
     }
+    for (const p of await options.links.listPortals(this.spaceId)) {
+      this.state.portals.set(p.id, this.toPortal(p.col, p.row, p.targetId, p.targetName));
+    }
+    this.answer(MESSAGES.PLACE_PORTAL, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parsePlacePortal(payload);
+      if (!account || !request) throw new Error("invalid request");
+      if (account.guest || !canManagePortals(account.role)) {
+        throw new Error("only owners and admins can place portals");
+      }
+      if (this.state.portals.size >= MAX_PORTALS) throw new Error("the space has too many portals");
+      const error = portalError(request, this.portalList(), this.grid.cols, this.grid.rows);
+      if (error) throw new Error(error);
+      if (this.portalOnWall(request.col, request.row)) throw new Error("that is a wall");
+      const link = (await options.links.list(this.spaceId)).find(
+        (l) => l.status === "approved" && l.space.id === request.targetId,
+      );
+      if (!link) throw new Error("that space is not linked");
+      const id = await options.links.addPortal(
+        this.spaceId,
+        request.targetId,
+        request.col,
+        request.row,
+        account.userId,
+      );
+      // Someone else may have placed one here while the database was working.
+      const late = portalError(request, this.portalList(), this.grid.cols, this.grid.rows);
+      if (late) {
+        await options.links.removePortal(this.spaceId, id);
+        throw new Error(late);
+      }
+      this.state.portals.set(
+        id,
+        this.toPortal(request.col, request.row, request.targetId, link.space.name),
+      );
+      return true;
+    });
+    this.answer(MESSAGES.REMOVE_PORTAL, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseRemovePortal(payload);
+      if (!account || !request) throw new Error("invalid request");
+      if (account.guest || !canManagePortals(account.role)) {
+        throw new Error("only owners and admins can remove portals");
+      }
+      if (!this.state.portals.has(request.id)) throw new Error("that portal is gone");
+      await options.links.removePortal(this.spaceId, request.id);
+      this.state.portals.delete(request.id);
+      return true;
+    });
+    this.answer(MESSAGES.CROSS, async (client, payload: unknown): Promise<CrossResult> => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const player = this.state.players.get(client.sessionId);
+      const request = parseCross(payload);
+      const portal = request && this.state.portals.get(request.id);
+      if (!account || !player || !request || !portal) throw new Error("that portal is gone");
+      // Guests are visiting; they go home through the space picker, not onward.
+      if (account.guest) throw new Error("guests cannot cross to another space");
+      if (!atPortal(portal, player)) throw new Error("move closer");
+      // The link is read live: an owner may have ended it a moment ago.
+      if (!(await options.links.isApproved(this.spaceId, portal.targetId))) {
+        throw new Error("this connection has been closed");
+      }
+      const layout = await options.spaces.findLayout(portal.targetId);
+      return {
+        spaceId: portal.targetId,
+        name: portal.targetName,
+        template: layout?.template ?? DEFAULT_TEMPLATE,
+        size: layout?.size ?? DEFAULT_SIZE,
+      };
+    });
     this.answer(MESSAGES.ADD_ZONE, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parseAddZone(payload);
@@ -317,6 +400,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const account = (client as Client<{ auth: Account }>).auth;
       const request = parsePlace(payload);
       if (!account || !request) throw new Error("invalid request");
+      if (account.guest) throw new Error("guests cannot change the space");
       if (this.state.furniture.size >= MAX_FURNITURE)
         throw new Error("the space is full of furniture");
       const { item, col, row } = request;
@@ -381,6 +465,9 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       const player = this.state.players.get(client.sessionId);
       const request: ClaimTablePayload | null = parseClaim(payload);
       if (!player || !request) throw new Error("invalid request");
+      if ((client as Client<{ auth: Account }>).auth?.guest) {
+        throw new Error("guests cannot claim a desk");
+      }
       const check = checkClaim(
         this.map.tables,
         this.state.tables,
@@ -649,6 +736,28 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     });
   }
 
+  private portalList() {
+    return [...this.state.portals.values()];
+  }
+
+  private portalOnWall(col: number, row: number) {
+    for (let r = row; r < row + PORTAL_TILES; r++) {
+      for (let c = col; c < col + PORTAL_TILES; c++) {
+        if (this.grid.blocked[r * this.grid.cols + c]) return true;
+      }
+    }
+    return false;
+  }
+
+  private toPortal(col: number, row: number, targetId: string, targetName: string) {
+    const portal = new Portal();
+    portal.col = col;
+    portal.row = row;
+    portal.targetId = targetId;
+    portal.targetName = targetName;
+    return portal;
+  }
+
   private toFurniture(itemId: string, col: number, row: number) {
     const piece = new Furniture();
     piece.itemId = itemId;
@@ -669,15 +778,39 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     const user = await this.options.auth.authenticate(options?.token);
     if (!user) throw new ServerError(401, "not signed in");
     const membership = await this.options.spaces.findMembership(this.spaceId, user.id);
-    if (!membership) throw new ServerError(403, "you are not in this space");
+    if (membership) {
+      return {
+        userId: user.id,
+        name: user.name,
+        look: user.look,
+        role: membership.role,
+        guest: false,
+        lastX: membership.lastX,
+        lastY: membership.lastY,
+      };
+    }
+    if (!(await this.mayVisit(user.id, options?.fromSpaceId))) {
+      throw new ServerError(403, "you are not in this space");
+    }
+    // A visitor has the rights of a plain member at most, and nothing is saved for them here.
     return {
       userId: user.id,
       name: user.name,
       look: user.look,
-      role: membership.role,
-      lastX: membership.lastX,
-      lastY: membership.lastY,
+      role: "member",
+      guest: true,
+      lastX: null,
+      lastY: null,
     };
+  }
+
+  /** A member of a linked space may visit; the link and the ban list are read live. */
+  private async mayVisit(userId: string, fromSpaceId: unknown): Promise<boolean> {
+    if (!isUuid(fromSpaceId) || fromSpaceId === this.spaceId) return false;
+    const { spaces, links, bans } = this.options;
+    if (!(await spaces.findMembership(fromSpaceId, userId))) return false;
+    if (await bans.isBanned(this.spaceId, userId)) return false;
+    return links.isApproved(fromSpaceId, this.spaceId);
   }
 
   onJoin(client: Client<{ auth: Account }>) {
@@ -715,7 +848,8 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.seated.delete(client.sessionId);
     }
     this.lastWave.delete(client.sessionId);
-    if (!player || !client.auth) return;
+    // A visitor has no row here to save a position in.
+    if (!player || !client.auth || client.auth.guest) return;
     try {
       await this.options.spaces.savePosition(this.spaceId, client.auth.userId, player.x, player.y);
     } catch (err) {

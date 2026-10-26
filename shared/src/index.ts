@@ -4,6 +4,7 @@ export * from "./art-catalog.js";
 export * from "./seat.js";
 export * from "./zone.js";
 export * from "./status.js";
+export * from "./portal.js";
 export const MAX_CLIENTS = 100;
 export const MAX_NAME_LENGTH = 24;
 
@@ -168,6 +169,12 @@ export const MESSAGES = {
   SPACE_RESET: "space-reset",
   /** Server to one client: you were removed from this space; the connection closes next. */
   REMOVED: "removed",
+  // Request/response: owners and admins put a portal to a linked space on the map, or take one away.
+  PLACE_PORTAL: "place-portal",
+  REMOVE_PORTAL: "remove-portal",
+  // Request/response: ask to cross a portal you stand at. The room answers with the space to join,
+  // or rejects with the reason (the link was ended, you are a guest here).
+  CROSS: "cross",
   /** Server to everyone else: the member list or a role changed, so read the list again. */
   MEMBERS_CHANGED: "members-changed",
   // Request/response: sit on a free seat within reach (the room snaps you onto it), or stand up.
@@ -327,6 +334,8 @@ export interface ApiError {
 export interface JoinOptions {
   token: string;
   spaceId: string;
+  /** Set when crossing from a linked space; the room checks the link and that you belong there. */
+  fromSpaceId?: string;
 }
 
 // Spaces. A space is its own room with its own members; the role decides what a member may do.

@@ -35,6 +35,8 @@ export interface PeoplePanel {
   setBans(bans: readonly BannedMember[]): void;
   /** Who is looking, which decides the actions each row offers. */
   setViewer(userId: string, role: SpaceRole): void;
+  /** A visitor from a linked space: not a member, so there is nothing to leave. */
+  setGuest(): void;
   toggle(): void;
   isOpen(): boolean;
   destroy(): void;
@@ -504,6 +506,9 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
       viewer = { userId, role };
       leave.hidden = role === "owner";
       render();
+    },
+    setGuest() {
+      leave.hidden = true;
     },
     setRequests(next) {
       requests = next;

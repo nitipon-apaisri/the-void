@@ -41,7 +41,7 @@ export const hashToken = (token: string) => createHash("sha256").update(token).d
 export const hashCode = (secret: string, code: string) =>
   createHmac("sha256", secret).update(code).digest("hex");
 
-const newCode = () =>
+export const newCode = () =>
   Array.from({ length: INVITE_CODE_LENGTH }, () =>
     INVITE_CODE_ALPHABET.charAt(randomInt(INVITE_CODE_ALPHABET.length)),
   ).join("");

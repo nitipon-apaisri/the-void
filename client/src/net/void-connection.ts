@@ -14,6 +14,11 @@ import {
   type PlaceFurniturePayload,
   type RemoveFurniturePayload,
   type AddZonePayload,
+  type CrossPayload,
+  type CrossResult,
+  type MapPortal,
+  type PlacePortalPayload,
+  type RemovePortalPayload,
   type MapZone,
   type AnswerKnockPayload,
   type KnockPayload,
@@ -78,6 +83,13 @@ export interface VoidConnection {
   removeZone(id: string): Promise<void>;
   /** Fires with every private room (the template's and the drawn ones) whenever one changes. */
   onZones(cb: (zones: MapZone[]) => void): void;
+  /** Owners and admins only. Rejects with the server's reason (a wall, another portal). */
+  placePortal(portal: PlacePortalPayload): Promise<void>;
+  removePortal(id: string): Promise<void>;
+  /** Fires with every portal whenever one is added or removed. */
+  onPortals(cb: (portals: MapPortal[]) => void): void;
+  /** Ask to cross a portal we stand at. Rejects with the reason (the link was ended, move closer). */
+  cross(id: string): Promise<CrossResult>;
   /** Claim or give up the stage. Rejects with the reason (someone else presents in this room). */
   setPresenting(on: boolean): Promise<void>;
   setStatus(status: PlayerStatus): Promise<void>;
@@ -235,6 +247,32 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
         emit();
       });
     },
+    placePortal: async (portal) => {
+      await room.request(MESSAGES.PLACE_PORTAL, portal);
+    },
+    removePortal: async (id) => {
+      await room.request(MESSAGES.REMOVE_PORTAL, { id } satisfies RemovePortalPayload);
+    },
+    onPortals: (cb) => {
+      const portals = new Map<string, MapPortal>();
+      const emit = () => cb([...portals.values()]);
+      const state = $(room.state as any).portals;
+      state.onAdd((p: any, id: string) => {
+        portals.set(id, {
+          id,
+          col: p.col,
+          row: p.row,
+          targetId: p.targetId,
+          targetName: p.targetName,
+        });
+        emit();
+      });
+      state.onRemove((_: any, id: string) => {
+        portals.delete(id);
+        emit();
+      });
+    },
+    cross: (id) => room.request(MESSAGES.CROSS, { id } satisfies CrossPayload),
     setPresenting: async (on) => {
       await room.request(MESSAGES.PRESENT, { on } satisfies PresentPayload);
     },

@@ -17,12 +17,18 @@ import {
   isSeatFacing,
   nearestFreeSeat,
   type Seat,
+  atPortal,
   canEmptySpace,
+  canManageLinks,
+  canManagePortals,
   findFurniture,
   fullRect,
   placementError,
   setBlocked,
   type FurnitureItem,
+  type MapPortal,
+  PORTAL_TILES,
+  portalError,
   type PlacedFurniture,
   WAVE_RANGE,
   canManageMembers,
@@ -91,6 +97,7 @@ import { createAccountBar, type AccountBar } from "../ui/account-bar";
 import { promptAuth } from "../ui/auth-form";
 import { confirmDialog } from "../ui/confirm";
 import { openInviteDialog } from "../ui/invite-dialog";
+import { openLinksDialog } from "../ui/links-dialog";
 import { createMapControls, type MapControls } from "../ui/map-controls";
 import { createMinimap, type Minimap } from "../ui/minimap";
 import { createPeoplePanel, type PeoplePanel } from "../ui/people-panel";
@@ -104,6 +111,7 @@ import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
 import { createToast, type Toast } from "../ui/toast";
 import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
+import { createVisitBar, type VisitBar } from "../ui/visit-bar";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
@@ -113,7 +121,14 @@ import { buildInviteLink, inviteBase, takeInviteFromUrl } from "../utils/invite-
 import { tilesetUrls } from "../utils/game-art";
 import { clearSession, loadSession, saveSession } from "../utils/session";
 import { loadSettings, saveSettings } from "../utils/settings-store";
-import { forgetLastSpace, loadLastSpace, saveLastSpace } from "../utils/space-store";
+import {
+  forgetLastSpace,
+  loadLastSpace,
+  saveLastSpace,
+  saveVisit,
+  takeVisit,
+  type Visit,
+} from "../utils/space-store";
 
 const mapUrls = import.meta.glob("../assets/maps/*.tmj", {
   eager: true,
@@ -138,6 +153,15 @@ export class WorldScene extends Phaser.Scene {
   private zoneArt: Phaser.GameObjects.GameObject[] = [];
   // The first corner of a room being drawn, in tiles.
   private zoneAnchor?: { col: number; row: number };
+  // Cross space: the doors this space has, and the one we stand at (so it asks only once).
+  private portals = new Map<string, MapPortal>();
+  private portalArt: Phaser.GameObjects.GameObject[] = [];
+  private atPortalId?: string;
+  private crossing = false;
+  // Set when we came through a portal: we are a guest here and the visit bar takes us home.
+  private visit?: Visit;
+  private visitBar?: VisitBar;
+  private closeLinks?: () => void;
   private zoneOf = new Map<string, string>();
   private myZone = "";
   // Who LiveKit says is talking; shown only for people in hearing range (see showSpeaking).
@@ -290,6 +314,8 @@ export class WorldScene extends Phaser.Scene {
       this.accountBar?.destroy();
       this.people?.destroy();
       this.closeInvite?.();
+      this.closeLinks?.();
+      this.visitBar?.destroy();
     });
     void this.enter();
   }
@@ -322,7 +348,9 @@ export class WorldScene extends Phaser.Scene {
     this.decorate = createDecoratePanel({
       onToggle: (open) => {
         if (!open) this.setTool(undefined);
+        else void this.loadPortalTargets();
       },
+      onLinks: () => this.showLinks(),
       onTool: (tool) => this.setTool(tool),
       onReset: () => void this.resetDecorations(),
     });
@@ -367,6 +395,10 @@ export class WorldScene extends Phaser.Scene {
       onLeave: () => void this.leaveSpace(),
     });
     this.people.setViewer(session.user.id, space.role);
+    if (this.visit) {
+      this.people.setGuest();
+      this.visitBar = createVisitBar(space.name, this.visit.from.name, () => this.goHome());
+    }
     this.watchRequests(space);
     this.accountBar = createAccountBar(session.user.name, {
       onStatus: (status) => void this.chooseStatus(status),
@@ -416,6 +448,12 @@ export class WorldScene extends Phaser.Scene {
         throw err;
       }
     };
+    // Taken before anything else so a reload never repeats it; a reload goes back to the last space.
+    const visit = takeVisit(session.user.id);
+    if (visit) {
+      this.visit = visit;
+      return { ...visit.space, role: "member" };
+    }
     const invited = await this.useInvite(session);
     if (invited) {
       saveLastSpace(session.user.id, invited.id);
@@ -692,6 +730,11 @@ export class WorldScene extends Phaser.Scene {
     this.switchSpace();
   }
 
+  // The visit is already used up, so a reload opens the space we came from.
+  private goHome() {
+    window.location.reload();
+  }
+
   private switchSpace() {
     forgetLastSpace();
     window.location.reload();
@@ -699,7 +742,8 @@ export class WorldScene extends Phaser.Scene {
 
   private async loadMembers() {
     const { session, space } = this;
-    if (!session || !space) return;
+    // A guest is not in the member list and may not read it.
+    if (!session || !space || this.visit) return;
     try {
       this.members = await this.spaces.members(session.token, space.id);
       this.people?.setMembers(this.members);
@@ -928,7 +972,13 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(30)
         .setAlpha(0.8)
         .setVisible(false);
-    } else if (tool?.kind === "remove" || tool?.kind === "unzone" || tool?.kind === "zone") {
+    } else if (
+      tool?.kind === "remove" ||
+      tool?.kind === "unzone" ||
+      tool?.kind === "zone" ||
+      tool?.kind === "portal" ||
+      tool?.kind === "unportal"
+    ) {
       this.hoverBox = this.add
         .rectangle(0, 0, 0, 0)
         .setOrigin(0)
@@ -936,6 +986,36 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(30)
         .setVisible(false);
     }
+  }
+
+  // The portal's top-left tile when its middle sits under the pointer.
+  private portalSpot(pointer: Phaser.Input.Pointer) {
+    return {
+      col: Math.round(pointer.worldX / TILE_SIZE - PORTAL_TILES / 2),
+      row: Math.round(pointer.worldY / TILE_SIZE - PORTAL_TILES / 2),
+    };
+  }
+
+  private portalProblem(spot: { col: number; row: number }) {
+    const error = portalError(spot, [...this.portals.values()], this.grid.cols, this.grid.rows);
+    if (error) return error;
+    for (let row = spot.row; row < spot.row + PORTAL_TILES; row++) {
+      for (let col = spot.col; col < spot.col + PORTAL_TILES; col++) {
+        if (this.baseBlocked[row * this.grid.cols + col]) return "that is a wall";
+      }
+    }
+    return undefined;
+  }
+
+  private portalAt(x: number, y: number) {
+    const size = PORTAL_TILES * TILE_SIZE;
+    return [...this.portals.values()].find(
+      (p) =>
+        x >= p.col * TILE_SIZE &&
+        x < p.col * TILE_SIZE + size &&
+        y >= p.row * TILE_SIZE &&
+        y < p.row * TILE_SIZE + size,
+    );
   }
 
   private customZoneAt(x: number, y: number) {
@@ -988,6 +1068,27 @@ export class WorldScene extends Phaser.Scene {
         .setPosition(rect.col * TILE_SIZE, rect.row * TILE_SIZE)
         .setSize(rect.cols * TILE_SIZE, rect.rows * TILE_SIZE)
         .setStrokeStyle(2, bad ? 0xff6b81 : 0x5eead4)
+        .setVisible(true);
+    } else if (tool?.kind === "portal" && this.hoverBox) {
+      const spot = this.portalSpot(pointer);
+      const bad = this.portalProblem(spot);
+      const size = PORTAL_TILES * TILE_SIZE;
+      this.hoverBox
+        .setPosition(spot.col * TILE_SIZE, spot.row * TILE_SIZE)
+        .setSize(size, size)
+        .setStrokeStyle(2, bad ? 0xff6b81 : 0x5eead4)
+        .setVisible(true);
+    } else if (tool?.kind === "unportal" && this.hoverBox) {
+      const portal = this.portalAt(pointer.worldX, pointer.worldY);
+      if (!portal) {
+        this.hoverBox.setVisible(false);
+        return;
+      }
+      const size = PORTAL_TILES * TILE_SIZE;
+      this.hoverBox
+        .setPosition(portal.col * TILE_SIZE, portal.row * TILE_SIZE)
+        .setSize(size, size)
+        .setStrokeStyle(2, 0xff6b81)
         .setVisible(true);
     } else if (tool?.kind === "unzone" && this.hoverBox) {
       const zone = this.customZoneAt(pointer.worldX, pointer.worldY);
@@ -1048,6 +1149,17 @@ export class WorldScene extends Phaser.Scene {
       } else if (tool.kind === "unzone") {
         const zone = this.customZoneAt(pointer.worldX, pointer.worldY);
         if (zone) await connection.removeZone(zone.id);
+      } else if (tool.kind === "portal") {
+        const spot = this.portalSpot(pointer);
+        const error = this.portalProblem(spot);
+        if (error) {
+          this.toast.show(error, "error", 2000);
+          return;
+        }
+        await connection.placePortal({ targetId: tool.targetId, ...spot });
+      } else if (tool.kind === "unportal") {
+        const portal = this.portalAt(pointer.worldX, pointer.worldY);
+        if (portal) await connection.removePortal(portal.id);
       } else {
         const piece = this.pieceAt(pointer.worldX, pointer.worldY);
         if (piece) await connection.removeFurniture(piece.id);
@@ -1228,6 +1340,7 @@ export class WorldScene extends Phaser.Scene {
       const connection = await connectToVoid(SERVER_URL, {
         token: this.session.token,
         spaceId: this.space.id,
+        ...(this.visit && { fromSpaceId: this.visit.from.id }),
       });
       this.connection = connection;
       this.unsent = true;
@@ -1320,13 +1433,20 @@ export class WorldScene extends Phaser.Scene {
       connection.onClaims((claims) => this.setClaims(claims));
       connection.onFurniture((pieces) => this.syncFurniture(pieces));
       connection.onZones((zones) => this.syncZones(zones));
+      connection.onPortals((portals) => this.syncPortals(portals));
       connection.onKnock((knock) => {
         this.roomBar?.addKnock(knock.knockerId, knock.name);
         const room = this.zones.get(this.myZone)?.name ?? "your room";
         this.alert(`${knock.name} is knocking on ${room}`, "Open The Void to let them in");
       });
       connection.onKnockResult((r) => this.knockResult(r.knockerId, r.zoneId, r.result));
-      this.decorate?.setAvailable(true, this.space ? canEmptySpace(this.space.role) : false);
+      const role = this.space?.role;
+      // Guests only look around: they cannot decorate the space they visit.
+      this.decorate?.setAvailable(
+        !this.visit,
+        role ? canEmptySpace(role) : false,
+        role ? canManageLinks(role) : false,
+      );
       void this.startVoice(connection);
       connection.onDrop(() => {
         this.toast.show("Connection lost. Reconnecting…", "error");
@@ -1349,6 +1469,12 @@ export class WorldScene extends Phaser.Scene {
       });
     } catch (err) {
       if (err instanceof NotInSpaceError) {
+        if (this.visit) {
+          // Between the crossing and the join the owner may have ended the link.
+          await this.closedNotice(this.visit.space.name);
+          this.goHome();
+          return;
+        }
         // Removed from the space, or it is gone: pick again rather than retrying.
         this.switchSpace();
         return;
@@ -1497,6 +1623,129 @@ export class WorldScene extends Phaser.Scene {
           .setDepth(2),
       );
     }
+  }
+
+  // Doors to linked spaces. The room keeps them even when the link ends; crossing then says so.
+  private syncPortals(list: MapPortal[]) {
+    for (const art of this.portalArt) art.destroy();
+    this.portalArt = [];
+    this.portals = new Map(list.map((p) => [p.id, p]));
+    this.atPortalId = undefined;
+    const size = PORTAL_TILES * TILE_SIZE;
+    for (const p of list) {
+      const x = p.col * TILE_SIZE;
+      const y = p.row * TILE_SIZE;
+      this.portalArt.push(
+        this.add
+          .rectangle(x, y, size, size, 0x5eead4, 0.22)
+          .setOrigin(0)
+          .setStrokeStyle(2, 0x5eead4, 0.8)
+          .setDepth(1),
+        this.add
+          .existing(
+            new Chip(this, x + size / 2, y - 4, `➜ ${p.targetName}`, {
+              color: "#c8fff4",
+              fontSize: "11px",
+              origin: { x: 0.5, y: 1 },
+            }),
+          )
+          .setDepth(2),
+      );
+    }
+  }
+
+  // Stepping onto a portal asks once; leaving it and coming back asks again.
+  private refreshPortal(me: Position) {
+    if (this.crossing || this.tool) return;
+    const here = [...this.portals.values()].find((p) => atPortal(p, me));
+    if (!here) {
+      this.atPortalId = undefined;
+      return;
+    }
+    if (this.atPortalId === here.id) return;
+    this.atPortalId = here.id;
+    if (this.visit) {
+      this.toast.show("Visitors cannot cross to another space", "info", 2500);
+      return;
+    }
+    void this.crossPortal(here);
+  }
+
+  private async crossPortal(portal: MapPortal) {
+    const { connection, session, space } = this;
+    if (!connection || !session || !space) return;
+    this.crossing = true;
+    try {
+      const ok = await confirmDialog({
+        title: `Visit ${portal.targetName}?`,
+        body: "You will arrive as a visitor. Use the button at the top to come back.",
+        confirmLabel: "Visit",
+        cancelLabel: "Stay here",
+      });
+      if (!ok) return;
+      try {
+        const target = await connection.cross(portal.id);
+        saveVisit({
+          userId: session.user.id,
+          space: {
+            id: target.spaceId,
+            name: target.name,
+            template: target.template,
+            size: target.size,
+          },
+          from: { id: space.id, name: space.name },
+        });
+        window.location.reload();
+      } catch (err) {
+        await this.closedNotice(portal.targetName, err instanceof Error ? err.message : undefined);
+      }
+    } finally {
+      this.crossing = false;
+    }
+  }
+
+  // The owner of either space may have ended the connection since the portal was placed.
+  private closedNotice(name: string, reason?: string) {
+    return confirmDialog({
+      title: `Cannot enter ${name}`,
+      body: reason ?? "This connection has been closed.",
+      confirmLabel: "OK",
+      cancelLabel: "Close",
+    });
+  }
+
+  private async loadPortalTargets() {
+    const { session, space } = this;
+    if (!session || !space || !canManagePortals(space.role)) return;
+    try {
+      const links = await this.spaces.listLinks(session.token, space.id);
+      this.decorate?.setPortalTargets(
+        links.filter((l) => l.status === "approved").map((l) => l.space),
+      );
+    } catch {
+      this.decorate?.setPortalTargets([]);
+    }
+  }
+
+  private showLinks() {
+    const { session, space } = this;
+    if (!session || !space || this.closeLinks) return;
+    this.setGameInput(false);
+    const token = () => session.token;
+    this.closeLinks = openLinksDialog(
+      {
+        list: () => this.spaces.listLinks(token(), space.id),
+        makeCode: () => this.spaces.makeConnectCode(token(), space.id),
+        request: async (code) => void (await this.spaces.requestLink(token(), space.id, code)),
+        approve: (id) => this.spaces.approveLink(token(), space.id, id),
+        end: (id) => this.spaces.endLink(token(), space.id, id),
+      },
+      () => {
+        this.closeLinks = undefined;
+        this.setGameInput(true);
+        void this.loadPortalTargets();
+      },
+    );
   }
 
   private enterZone(zone: string) {
@@ -1863,6 +2112,7 @@ export class WorldScene extends Phaser.Scene {
     if (time - this.lastTablePrompt > 150) {
       this.lastTablePrompt = time;
       this.refreshTablePrompt(me);
+      this.refreshPortal(me);
       this.refreshWave(me);
       this.autoSit(me);
     }

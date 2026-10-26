@@ -41,6 +41,13 @@ export class Zone extends Schema {
   @type("boolean") locked = false;
 }
 
+export class Portal extends Schema {
+  @type("number") col = 0;
+  @type("number") row = 0;
+  @type("string") targetId = "";
+  @type("string") targetName = "";
+}
+
 export class VoidState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   // Keyed by the table's id from the map.
@@ -49,4 +56,6 @@ export class VoidState extends Schema {
   @type({ map: Furniture }) furniture = new MapSchema<Furniture>();
   // Private rooms, keyed by id: the template's ("z<n>") and the ones drawn in the space.
   @type({ map: Zone }) zones = new MapSchema<Zone>();
+  // Doors to linked spaces, keyed by id; placed by owners and admins.
+  @type({ map: Portal }) portals = new MapSchema<Portal>();
 }

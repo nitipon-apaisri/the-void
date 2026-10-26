@@ -11,6 +11,7 @@ import { restrictCors } from "./common/cors.js";
 import { env } from "./config/env.js";
 import { createBanRepository } from "./repositories/ban.repository.js";
 import { createInviteRepository } from "./repositories/invite.repository.js";
+import { createLinkRepository } from "./repositories/link.repository.js";
 import { createSpaceRepository } from "./repositories/space.repository.js";
 import { createFurnitureRepository } from "./repositories/furniture.repository.js";
 import { createTableRepository } from "./repositories/table.repository.js";
@@ -24,6 +25,7 @@ import { createAuthService } from "./services/auth.service.js";
 import { loadCollisionGrid, loadSeats, loadTables, loadZones } from "./services/map.service.js";
 import { createPool } from "./services/database.service.js";
 import { createInviteService } from "./services/invite.service.js";
+import { createLinkService } from "./services/link.service.js";
 import { createMemberService } from "./services/member.service.js";
 import { createSpaceService } from "./services/space.service.js";
 import { createPasswordService } from "./services/password.service.js";
@@ -78,6 +80,12 @@ const maps: SpaceMaps = Object.fromEntries(
   ),
 );
 const furniture = createFurnitureRepository(pool);
+const linkRepository = createLinkRepository(pool);
+const linkService = createLinkService({
+  links: linkRepository,
+  spaces,
+  secret: env.authSecret,
+});
 
 const voiceTokens = createVoiceTokenService(env.livekit);
 if (!voiceTokens) console.warn("LiveKit is not configured; voice and video are disabled");
@@ -98,6 +106,7 @@ const gameServer = new Server({
       spaces: spaceService,
       invites: inviteService,
       members: memberService,
+      links: linkService,
     });
     mountInviteRoutes(app, { ...routeOptions, invites: inviteService });
   },
@@ -113,6 +122,8 @@ gameServer
     claims,
     furniture,
     zones: createZoneRepository(pool),
+    links: linkRepository,
+    bans,
   })
   .filterBy(["spaceId"]);
 gameServer.onShutdown(() => pool.end());

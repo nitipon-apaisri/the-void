@@ -1,16 +1,19 @@
 // shared
 import {
   INVITE_ROUTES,
+  LINK_ROUTES,
   SPACE_ROUTES,
   type ApiError,
   type BannedMember,
   type CreateSpacePayload,
+  type ConnectCode,
   type CreatedInvite,
   type InviteOptions,
   type InvitePreview,
   type InviteResult,
   type InviteSummary,
   type JoinRequest,
+  type SpaceLink,
   type SpaceMember,
   type SpaceRole,
   type SpaceSummary,
@@ -36,6 +39,13 @@ export interface SpaceClient {
   listBans(token: string, spaceId: string): Promise<BannedMember[]>;
   banMember(token: string, spaceId: string, userId: string): Promise<void>;
   unbanMember(token: string, spaceId: string, userId: string): Promise<void>;
+  // Cross space. Owners make a connect code, ask for a link with another space's code, approve
+  // or end links; admins can read the list (they place the portals).
+  makeConnectCode(token: string, spaceId: string): Promise<ConnectCode>;
+  listLinks(token: string, spaceId: string): Promise<SpaceLink[]>;
+  requestLink(token: string, spaceId: string, code: string): Promise<SpaceLink[]>;
+  approveLink(token: string, spaceId: string, linkId: string): Promise<void>;
+  endLink(token: string, spaceId: string, linkId: string): Promise<void>;
   // Anyone signed in who holds a link.
   previewInvite(token: string, invite: string): Promise<InvitePreview>;
   acceptInvite(token: string, invite: string): Promise<InviteResult>;
@@ -96,6 +106,19 @@ export function createSpaceClient(baseUrl: string): SpaceClient {
     },
     async unbanMember(token, spaceId, userId) {
       await call(spacePath(spaceId, `/bans/${encodeURIComponent(userId)}`), "DELETE", token);
+    },
+    makeConnectCode: (token, spaceId) =>
+      call(spacePath(spaceId, LINK_ROUTES.CONNECT_CODE), "POST", token),
+    listLinks: (token, spaceId) => call(spacePath(spaceId, LINK_ROUTES.LINKS), "GET", token),
+    requestLink: (token, spaceId, code) =>
+      call(spacePath(spaceId, LINK_ROUTES.LINKS), "POST", token, { code }),
+    async approveLink(token, spaceId, linkId) {
+      const path = `${LINK_ROUTES.LINKS}/${encodeURIComponent(linkId)}/approve`;
+      await call(spacePath(spaceId, path), "POST", token);
+    },
+    async endLink(token, spaceId, linkId) {
+      const path = `${LINK_ROUTES.LINKS}/${encodeURIComponent(linkId)}`;
+      await call(spacePath(spaceId, path), "DELETE", token);
     },
     previewInvite: (token, invite) => call(invitePath(invite), "GET", token),
     acceptInvite: (token, invite) => call(invitePath(invite, "/accept"), "POST", token),

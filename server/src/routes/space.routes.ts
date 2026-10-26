@@ -3,12 +3,13 @@ import express, { type Application } from "express";
 import { rateLimit } from "express-rate-limit";
 
 // shared
-import { SPACE_ROUTES, type ApiError } from "@void/shared";
+import { LINK_ROUTES, SPACE_ROUTES, type ApiError } from "@void/shared";
 
 import { allowOrigins } from "../common/cors.js";
 import { parseInviteOptions, parseRoleChange, parseSpace } from "../common/credentials.js";
 import { AuthError, type AuthService } from "../services/auth.service.js";
 import type { InviteService } from "../services/invite.service.js";
+import type { LinkService } from "../services/link.service.js";
 import type { MemberService } from "../services/member.service.js";
 import type { SpaceService } from "../services/space.service.js";
 import { respondAs } from "./http.js";
@@ -18,15 +19,18 @@ interface Options {
   spaces: SpaceService;
   invites: InviteService;
   members: MemberService;
+  links: LinkService;
   corsOrigins: readonly string[];
 }
 
 const BODY_LIMIT = "1kb";
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
 /** Mounts the space endpoints. Every one needs a valid token; membership is checked per space. */
 export function mountSpaceRoutes(
   app: Application,
-  { auth, spaces, invites, members, corsOrigins }: Options,
+  { auth, spaces, invites, members, links, corsOrigins }: Options,
 ) {
   app.use(SPACE_ROUTES.LIST, allowOrigins(corsOrigins));
 
@@ -40,6 +44,8 @@ export function mountSpaceRoutes(
     });
   const createLimiter = limiter(20, "too many spaces created, try again later");
   const inviteLimiter = limiter(60, "too many links created, try again later");
+  // Wrong connect codes are guessable like join codes, so asking is limited more tightly.
+  const linkLimiter = limiter(30, "too many link requests, try again later");
   const json = express.json({ limit: BODY_LIMIT });
   const space = (path: string) => `${SPACE_ROUTES.PREFIX}:spaceId${path}`;
 
@@ -131,4 +137,35 @@ export function mountSpaceRoutes(
       }),
     );
   }
+
+  app.post(space(LINK_ROUTES.CONNECT_CODE), linkLimiter, (req, res) =>
+    respondAs(auth, req, res, (id) => links.connectCode(id, String(req.params.spaceId))),
+  );
+
+  app.get(space(LINK_ROUTES.LINKS), (req, res) =>
+    respondAs(auth, req, res, (id) => links.list(id, String(req.params.spaceId))),
+  );
+
+  app.post(space(LINK_ROUTES.LINKS), linkLimiter, json, (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      const code = isRecord(req.body) ? req.body.code : undefined;
+      if (typeof code !== "string") throw new AuthError(400, "invalid request");
+      return links.request(id, String(req.params.spaceId), code);
+    }),
+  );
+
+  app.post(space(`${LINK_ROUTES.LINKS}/:linkId/approve`), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await links.approve(id, String(req.params.spaceId), String(req.params.linkId));
+      return {};
+    }),
+  );
+
+  // Declining a request and ending a link are the same thing.
+  app.delete(space(`${LINK_ROUTES.LINKS}/:linkId`), (req, res) =>
+    respondAs(auth, req, res, async (id) => {
+      await links.end(id, String(req.params.spaceId), String(req.params.linkId));
+      return {};
+    }),
+  );
 }

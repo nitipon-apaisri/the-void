@@ -16,6 +16,8 @@ import {
   loadZones,
 } from "../../server/src/services/map.service.js";
 import type { AuthService } from "../../server/src/services/auth.service.js";
+import type { BanRepository } from "../../server/src/repositories/ban.repository.js";
+import type { LinkRepository } from "../../server/src/repositories/link.repository.js";
 import type { SpaceRepository } from "../../server/src/repositories/space.repository.js";
 import type { UserRecord, UserRepository } from "../../server/src/repositories/user.repository.js";
 import { type ServerMessage, type ServerStats } from "./config.js";
@@ -88,6 +90,8 @@ gameServer
       clear: async () => {},
     },
     zones: { list: async () => [], add: async () => "0", remove: async () => true },
+    links: { listPortals: async () => [] } as unknown as LinkRepository,
+    bans: { isBanned: async () => false } as unknown as BanRepository,
   })
   .filterBy(["spaceId"]);
 
