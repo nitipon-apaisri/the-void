@@ -19,6 +19,8 @@ registerAppScheme();
 const ALLOWED_PERMISSIONS = ["media", "display-capture", "fullscreen"];
 app.whenReady().then(() => {
   if (app.isPackaged) serveApp(path.join(process.resourcesPath, "client"));
+  // In development the Dock shows Electron's own icon; a packaged app gets ours from the bundle.
+  else app.dock?.setIcon(path.join(__dirname, "../build/icon.png"));
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb, details) =>
     cb(
       ALLOWED_PERMISSIONS.includes(permission) && originOf(details.requestingUrl) === CLIENT_ORIGIN,
