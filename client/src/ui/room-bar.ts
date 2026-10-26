@@ -24,9 +24,9 @@ const STYLE_ID = "void-room-bar-style";
 const STYLES = `
 .void-room-bar { position: fixed; top: 64px; left: 50%; z-index: 950; display: grid; gap: 8px; justify-items: center; transform: translateX(-50%); }
 .void-room-bar > * { font: 500 13px/1.4 var(--v-font); color: var(--v-text); }
-.void-room-pill, .void-knock { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 999px; }
+.void-room-pill, .void-knock { display: flex; align-items: center; gap: 10px; padding: 4px 6px 4px 14px; border-radius: var(--v-radius); }
 .void-room-pill[hidden] { display: none; }
-.void-room-bar button { padding: 6px 14px; border: 0; border-radius: 999px; font: 600 12px var(--v-font); cursor: pointer;
+.void-room-bar button { padding: 5px 12px; border: 0; border-radius: var(--v-radius-in); font: 600 12px var(--v-font); cursor: pointer;
   background: var(--v-hover); color: var(--v-text); }
 .void-room-bar button:hover { background: rgb(139 147 255 / 0.28); }
 .void-room-bar button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }

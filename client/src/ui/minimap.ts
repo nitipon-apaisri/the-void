@@ -28,9 +28,9 @@ export interface Minimap {
 const WIDTH = 210;
 const STYLE_ID = "void-minimap-style";
 const STYLES = `
-.void-minimap { position: fixed; left: 14px; bottom: 18px; z-index: 880; padding: 6px; border-radius: var(--v-radius); }
+.void-minimap { position: fixed; left: 14px; bottom: 18px; z-index: 880; padding: 4px; border-radius: var(--v-radius); }
 .void-minimap[hidden] { display: none; }
-.void-minimap canvas { display: block; border-radius: 10px; cursor: pointer; }
+.void-minimap canvas { display: block; border-radius: var(--v-radius-sm); cursor: pointer; }
 `;
 
 // Blueprint colours: walls and furniture show as blocks, open floor as the panel itself.

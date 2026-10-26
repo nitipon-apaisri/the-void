@@ -21,8 +21,8 @@ export interface MapControlActions {
 const STYLE_ID = "void-map-controls-style";
 const STYLES = `
 .void-mapctl { position: fixed; right: 14px; bottom: 18px; z-index: 900; display: grid; gap: 2px; padding: 5px;
-  border-radius: 999px; }
-.void-mapctl button { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%;
+  border-radius: var(--v-radius); }
+.void-mapctl button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--v-radius-in);
   background: transparent; color: var(--v-muted); cursor: pointer; transition: background 0.15s, color 0.15s; }
 .void-mapctl button:hover { background: var(--v-hover); color: var(--v-text); }
 .void-mapctl button[aria-pressed="true"] { background: rgb(139 147 255 / 0.22); color: var(--v-text); }

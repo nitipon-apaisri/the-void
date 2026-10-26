@@ -11,6 +11,7 @@ import { PLAYER_RADIUS } from "../config/env";
 import { FACINGS, FRAME, facingFor, type Facing } from "../systems/character-frames";
 
 // objects
+import { Chip } from "./label";
 import { animationKey, ensureLookTexture } from "./look-textures";
 
 // How long after the last step a character counts as standing still.
@@ -23,9 +24,9 @@ const NAME_OFFSET = -(FRAME.height * 0.7) + PLAYER_RADIUS;
 /** A player: an animated character with the name above. (x, y) is where the feet are. */
 export class PlayerSprite extends Phaser.GameObjects.Container {
   private readonly sprite: Phaser.GameObjects.Sprite;
-  private readonly label: Phaser.GameObjects.Text;
+  private readonly label: Chip;
   private readonly ring: Phaser.GameObjects.Ellipse;
-  private readonly badge: Phaser.GameObjects.Text;
+  private readonly badge: Chip;
   // A dot left of the name when away or on do not disturb.
   private readonly dot: Phaser.GameObjects.Arc;
   private pulse?: Phaser.Tweens.Tween;
@@ -45,24 +46,24 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       .sprite(0, PLAYER_RADIUS, "__DEFAULT")
       .setOrigin(0.5, 1)
       .setVisible(false);
-    this.label = scene.add
-      .text(0, NAME_OFFSET, "", { color: "#e5e7eb", fontSize: "12px" })
-      .setOrigin(0.5, 1);
+    this.label = new Chip(scene, 0, NAME_OFFSET, "", {
+      color: "#e5e7eb",
+      fontSize: "11px",
+      origin: { x: 0.5, y: 1 },
+    });
     // A ring on the floor around the feet while this player talks; under the character.
     this.ring = scene.add
       .ellipse(0, PLAYER_RADIUS - 2, 44, 18)
       .setStrokeStyle(3, SPEAKING_COLOR)
       .setVisible(false);
-    this.badge = scene.add
-      .text(0, NAME_OFFSET - 16, "Presenting", {
-        color: "#ffffff",
-        backgroundColor: "#5b63d3",
-        fontSize: "10px",
-        padding: { x: 5, y: 2 },
-      })
-      .setOrigin(0.5, 1)
-      .setVisible(false);
-    this.dot = scene.add.circle(0, NAME_OFFSET - 6, 4, 0xffffff).setVisible(false);
+    this.badge = new Chip(scene, 0, NAME_OFFSET - 22, "Presenting", {
+      color: "#ffffff",
+      fontSize: "10px",
+      fill: 0x5b63d3,
+      alpha: 1,
+      origin: { x: 0.5, y: 1 },
+    }).setVisible(false);
+    this.dot = scene.add.circle(0, NAME_OFFSET - 8, 4, 0xffffff).setVisible(false);
     this.setProfile(name, look);
     this.add([this.ring, this.sprite, this.label, this.dot, this.badge]);
     this.setDepth(10);

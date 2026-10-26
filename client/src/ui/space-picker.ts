@@ -45,7 +45,7 @@ const STYLES = `
   background: radial-gradient(900px 520px at 50% 0%, rgb(139 147 255 / 0.22), transparent 70%), var(--v-bg);
   font: 14px/1.4 var(--v-font); color: var(--v-text); animation: v-fade 0.5s ease-out; }
 .void-spaces__panel { position: relative; z-index: 1; width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
-  overflow-y: auto; padding: 28px; border-radius: 22px; display: grid; gap: 18px; }
+  overflow-y: auto; padding: 28px; border-radius: var(--v-radius); display: grid; gap: 18px; }
 
 /* Background: a faint dot grid that fades towards the edges, three orbits with a small body on
    each, and a few stars. Everything is decoration, so it stays quiet and sits under the panel. */
@@ -59,7 +59,7 @@ const STYLES = `
 .void-sky i { position: absolute; left: 50%; top: 45%; translate: -50% -50%; border-radius: 50%;
   border: 1px solid var(--ink); animation: v-orbit var(--t) linear infinite, v-fade 1.2s ease-out; }
 .void-sky i::after { content: ""; position: absolute; top: -3px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px;
-  border-radius: 50%; background: var(--v-accent); box-shadow: 0 0 10px 1px var(--v-accent); }
+  border-radius: 50%; background: var(--v-accent); }
 .void-sky i:nth-child(1) { width: 520px; height: 520px; --t: 60s; }
 .void-sky i:nth-child(2) { width: 820px; height: 820px; --t: 110s; animation-direction: reverse, normal; }
 .void-sky i:nth-child(2)::after { width: 4px; height: 4px; margin-left: -2px; opacity: 0.7; }
@@ -98,7 +98,7 @@ const STYLES = `
 .void-choice:active { transform: scale(0.98); }
 .void-choice strong { font-size: 16px; }
 .void-choice span { color: var(--v-muted); line-height: 1.35; }
-.void-spaces .back { justify-self: start; padding: 4px 10px 4px 6px; border: 0; border-radius: 999px; background: none;
+.void-spaces .back { justify-self: start; padding: 4px 10px 4px 6px; border: 0; border-radius: var(--v-radius-sm); background: none;
   color: var(--v-muted); font: inherit; cursor: pointer; }
 .void-spaces .back:hover { background: var(--v-hover); color: var(--v-text); }
 .void-spaces .note { color: var(--v-text); min-height: 1.4em; }
@@ -123,7 +123,7 @@ const STYLES = `
 .void-spaces input { flex: 1; min-width: 0; padding: 10px 13px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line);
   background: var(--v-field); color: var(--v-text); font: inherit; }
 .void-spaces input:focus { outline: none; border-color: var(--v-accent); }
-.void-spaces .primary { padding: 10px 16px; border-radius: 999px; border: 0; cursor: pointer; background: var(--v-accent);
+.void-spaces .primary { padding: 10px 16px; border-radius: var(--v-radius-sm); border: 0; cursor: pointer; background: var(--v-accent);
   color: var(--v-accent-ink); font: inherit; font-weight: 650; transition: filter 0.15s; }
 .void-spaces .primary:hover:not(:disabled) { filter: brightness(1.1); }
 .void-spaces .primary:disabled { opacity: 0.6; cursor: wait; }

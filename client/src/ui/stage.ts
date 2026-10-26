@@ -22,12 +22,12 @@ const STYLES = `
 .void-stage[hidden] { display: none; }
 .void-stage__bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .void-stage__title { font-weight: 600; margin-right: auto; }
-.void-stage__bar button { padding: 4px 12px; border: 0; border-radius: 999px; background: var(--v-hover); color: inherit; font: 600 12px var(--v-font); cursor: pointer; }
+.void-stage__bar button { padding: 4px 12px; border: 0; border-radius: var(--v-radius-sm); background: var(--v-hover); color: inherit; font: 600 12px var(--v-font); cursor: pointer; }
 .void-stage__bar button[aria-pressed="true"] { background: rgb(139 147 255 / 0.28); }
 .void-stage__bar button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }
 .void-stage__screen { display: grid; }
 .void-stage__screen video { width: 100%; max-height: calc(100vh - 260px); aspect-ratio: 16 / 9; object-fit: contain;
-  border-radius: 10px; background: #000; }
+  border-radius: var(--v-radius-sm); background: #000; }
 `;
 
 /** A large view of what someone is presenting, with a switch when more than one is. */

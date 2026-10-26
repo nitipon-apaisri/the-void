@@ -83,6 +83,7 @@ import { audibleSpeakers } from "../systems/speaking";
 import { tablePrompt, type Claim } from "../systems/tables";
 
 // objects
+import { Chip } from "../objects/label";
 import { PlayerSprite } from "../objects/player";
 
 // ui
@@ -172,7 +173,7 @@ export class WorldScene extends Phaser.Scene {
   private lastMinimap = 0;
   private tables: MapTable[] = [];
   private claims = new Map<string, Claim>();
-  private readonly tableLabels = new Map<string, Phaser.GameObjects.Text>();
+  private readonly tableLabels = new Map<string, Chip>();
   private tablePromptView?: TablePromptView;
   private lastTablePrompt = 0;
   private decorate?: DecoratePanel;
@@ -809,13 +810,12 @@ export class WorldScene extends Phaser.Scene {
       }
       // On the desk top, under players so you can still walk in front of it.
       label ??= this.add
-        .text(table.x + table.width / 2, table.y + TILE_SIZE * 1.5, "", {
-          color: "#ffffff",
-          fontSize: "11px",
-          stroke: "#0b0d14",
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5)
+        .existing(
+          new Chip(this, table.x + table.width / 2, table.y + TILE_SIZE * 1.5, "", {
+            color: "#ffffff",
+            fontSize: "11px",
+          }),
+        )
         .setDepth(5);
       this.tableLabels.set(table.id, label);
       label.setText(claim.name).setVisible(true);
@@ -1487,13 +1487,14 @@ export class WorldScene extends Phaser.Scene {
           .setStrokeStyle(2, 0x8b93ff, 0.45)
           .setDepth(1),
         this.add
-          .text(z.x + 8, z.y + 6, `${z.locked ? "🔒 " : ""}${z.name} (private)`, {
-            fontFamily: "sans-serif",
-            fontSize: "12px",
-            color: "#cfd3ff",
-          })
-          .setAlpha(0.8)
-          .setDepth(1),
+          .existing(
+            new Chip(this, z.x + 8, z.y + 6, `${z.locked ? "🔒 " : ""}${z.name} (private)`, {
+              color: "#cfd3ff",
+              fontSize: "11px",
+              origin: { x: 0, y: 0 },
+            }),
+          )
+          .setDepth(2),
       );
     }
   }

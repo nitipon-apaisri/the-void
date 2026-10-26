@@ -13,9 +13,9 @@ export interface WaveButton {
 const STYLE_ID = "void-wave-style";
 const STYLES = `
 .void-wave { position: fixed; left: 50%; bottom: 164px; z-index: 950; display: none; transform: translateX(-50%);
-  padding: 6px; border-radius: 999px; }
+  padding: 6px; border-radius: var(--v-radius); }
 .void-wave[data-visible="true"] { display: block; }
-.void-wave button { padding: 8px 16px; border: 0; border-radius: 999px; font: 600 13px var(--v-font); cursor: pointer;
+.void-wave button { padding: 8px 16px; border: 0; border-radius: var(--v-radius-in); font: 600 13px var(--v-font); cursor: pointer;
   background: var(--v-hover); color: var(--v-text); }
 .void-wave button:hover:not(:disabled) { background: rgb(139 147 255 / 0.28); }
 .void-wave button:disabled { opacity: 0.5; cursor: default; }

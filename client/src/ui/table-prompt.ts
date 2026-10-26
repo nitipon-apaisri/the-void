@@ -23,10 +23,10 @@ export interface TablePromptActions {
 const STYLE_ID = "void-table-prompt-style";
 const STYLES = `
 .void-tableprompt { position: fixed; left: 50%; bottom: 108px; z-index: 950; display: none; align-items: center; gap: 12px;
-  transform: translateX(-50%); padding: 8px 8px 8px 16px; border-radius: 999px; font: 500 13px/1.4 var(--v-font);
+  transform: translateX(-50%); padding: 6px 6px 6px 14px; border-radius: var(--v-radius); font: 500 13px/1.4 var(--v-font);
   color: var(--v-text); max-width: calc(100vw - 32px); }
 .void-tableprompt[data-visible="true"] { display: flex; }
-.void-tableprompt button { padding: 7px 14px; border: 0; border-radius: 999px; font: 600 13px var(--v-font); cursor: pointer;
+.void-tableprompt button { padding: 5px 12px; border: 0; border-radius: var(--v-radius-in); font: 600 13px var(--v-font); cursor: pointer;
   background: var(--v-accent); color: #0b0d14; }
 .void-tableprompt button:disabled { opacity: 0.5; cursor: default; }
 .void-tableprompt button:focus-visible { outline: 2px solid var(--v-text); outline-offset: 2px; }

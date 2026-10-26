@@ -34,7 +34,7 @@ const STYLES = `
 .void-auth { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
   background: radial-gradient(900px 520px at 50% 0%, rgb(139 147 255 / 0.22), transparent 70%), var(--v-bg);
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
-.void-auth form { width: min(430px, calc(100vw - 32px)); padding: 28px; border-radius: 22px;
+.void-auth form { width: min(430px, calc(100vw - 32px)); padding: 28px; border-radius: var(--v-radius);
   background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
   -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur); display: grid; gap: 16px; }
 .void-auth h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
@@ -44,7 +44,7 @@ const STYLES = `
 .void-auth input:focus { outline: none; border-color: var(--v-accent); background: var(--v-hover); }
 .void-auth button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }
 .void-auth [hidden] { display: none; }
-.void-auth .submit { padding: 11px 14px; border-radius: 999px; border: 0; cursor: pointer;
+.void-auth .submit { padding: 11px 14px; border-radius: var(--v-radius-sm); border: 0; cursor: pointer;
   background: var(--v-accent); color: var(--v-accent-ink); font: inherit; font-weight: 650;
   transition: filter 0.15s; }
 .void-auth .submit:hover:not(:disabled) { filter: brightness(1.1); }

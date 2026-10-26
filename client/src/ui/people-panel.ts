@@ -4,6 +4,7 @@ import {
   canChangeRole,
   canModerateMember,
   canRemoveMember,
+  STATUS_COLORS,
   type BannedMember,
   type JoinRequest,
   type ModerateAction,
@@ -61,22 +62,22 @@ export interface PeoplePanelActions {
 
 const STYLE_ID = "void-people-style";
 const STYLES = `
-.void-people { position: fixed; top: 64px; right: 14px; z-index: 880; width: 280px; max-height: calc(100vh - 140px);
-  display: none; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--v-radius);
+.void-people { position: fixed; top: 64px; right: 14px; z-index: 880; width: 260px; max-height: calc(100vh - 140px);
+  display: none; flex-direction: column; gap: 8px; padding: 10px; border-radius: var(--v-radius);
   font: 13px/1.4 var(--v-font); color: var(--v-text); }
 .void-people[data-open="true"] { display: flex; }
-.void-people input { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+.void-people input { padding: 8px 12px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; }
 .void-people input:focus { outline: none; border-color: var(--v-accent); }
 .void-people__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
 .void-people h2 { margin: 8px 6px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--v-muted); }
-.void-people__row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--v-radius-sm);
+.void-people__row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--v-radius-sm);
   background: none; color: inherit; font: inherit; text-align: left; }
 .void-people__row[data-online="true"] { cursor: pointer; }
 .void-people__row[data-online="true"]:hover { background: var(--v-hover); }
 .void-people__row[data-online="false"] { color: var(--v-muted); cursor: default; }
 .void-people__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--v-muted); opacity: 0.45; }
-.void-people__row[data-online="true"] .void-people__dot { background: var(--v-on); opacity: 1; box-shadow: 0 0 8px var(--v-on); }
+.void-people__row[data-online="true"] .void-people__dot { opacity: 1; }
 .void-people__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .void-people__role { font-size: 11px; color: var(--v-muted); text-transform: capitalize; }
 .void-people__pop { position: fixed; z-index: 890; width: 200px; display: flex; flex-direction: column; gap: 2px; padding: 6px;
@@ -93,21 +94,21 @@ const STYLES = `
 .void-people__line { display: flex; align-items: center; gap: 2px; }
 .void-people__line .void-people__row { flex: 1; min-width: 0; }
 .void-people__line:has([aria-expanded="true"]) .void-people__row { background: var(--v-hover); }
-.void-people__more { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--v-muted);
+.void-people__more { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--v-radius-sm); background: none; color: var(--v-muted);
   font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
 .void-people__more:hover, .void-people__more[aria-expanded="true"] { background: var(--v-hover); color: var(--v-text); }
-.void-people__leave { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: none;
+.void-people__leave { padding: 6px 12px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: none;
   color: var(--v-muted); font: inherit; font-size: 12px; cursor: pointer; justify-self: start; }
 .void-people__leave:hover { background: var(--v-hover); color: var(--v-text); }
 .void-people__leave[hidden] { display: none; }
 .void-people__empty { margin: 8px 6px; color: var(--v-muted); }
-.void-people__invite { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+.void-people__invite { padding: 8px 12px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; font-weight: 550; cursor: pointer; }
 .void-people__invite:hover { background: var(--v-hover); }
 .void-people__invite[hidden] { display: none; }
 .void-people__ask { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
 .void-people__ask .void-people__name { flex: 1; }
-.void-people__ask button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+.void-people__ask button { padding: 4px 10px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; font-size: 12px; cursor: pointer; }
 .void-people__ask button:hover:not(:disabled) { background: var(--v-hover); }
 .void-people__ask button.yes { background: var(--v-accent); border-color: var(--v-accent); color: var(--v-accent-ink); font-weight: 650; }
@@ -298,6 +299,8 @@ export function createPeoplePanel(actions: PeoplePanelActions): PeoplePanel {
     role.className = "void-people__role";
     const roleText = member.role === "member" ? "" : member.role;
     const status = statuses.get(member.userId);
+    // Flat, like the status menu: the dot colour is the status.
+    if (isOnline) dot.style.background = STATUS_COLORS[status ?? "available"];
     role.textContent = [
       roleText,
       presenting.has(member.userId) ? "presenting" : "",

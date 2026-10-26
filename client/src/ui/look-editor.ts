@@ -38,10 +38,10 @@ const STYLES = `
   font-size: 12px; color: var(--v-text); text-align: center; }
 .void-look__picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .void-look .void-look__btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
-  border-radius: 50%; border: 0; background: var(--v-field); color: var(--v-text); cursor: pointer; font-size: 16px; line-height: 1; }
+  border-radius: var(--v-radius-sm); border: 0; background: var(--v-field); color: var(--v-text); cursor: pointer; font-size: 16px; line-height: 1; }
 .void-look .void-look__btn:hover { background: var(--v-hover); }
 .void-look .void-look__btn:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 1px; }
-.void-look .void-look__shuffle { width: auto; height: auto; padding: 6px 14px; border-radius: 999px; font-size: 13px; }
+.void-look .void-look__shuffle { width: auto; height: auto; padding: 6px 14px; border-radius: var(--v-radius-sm); font-size: 13px; }
 `;
 
 const LABELS: Record<LookPart, string> = {

@@ -82,9 +82,9 @@ export function buildSystemTab(ctx: SettingsContext): HTMLElement {
       <label class="row" style="grid-auto-flow: column; justify-content: start">
         <input type="checkbox" name="notifications" /> Notify me of waves and knocks when The Void is in the background
       </label>
-      <div class="row" style="grid-auto-flow: column; justify-content: start; align-items: center; gap: 10px">
-        <button type="button" data-test-notify>Send a test notification</button>
-        <small data-test-notify-result role="status"></small>
+      <div class="row" style="justify-content: flex-start; flex-wrap: wrap">
+        <button type="button" data-test-notify style="white-space: nowrap">Send a test notification</button>
+        <small data-test-notify-result role="status" style="flex: 1 1 180px; min-width: 0"></small>
       </div>
       <p>Whole-number zoom keeps the pixels sharp. A lower frame rate saves battery.</p>
     </section>

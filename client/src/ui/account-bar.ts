@@ -19,11 +19,11 @@ export interface AccountBar {
 const STYLE_ID = "void-account-style";
 const STYLES = `
 .void-account { position: fixed; top: 14px; right: 14px; z-index: 900; display: flex; gap: 4px;
-  align-items: center; padding: 5px 5px 5px 14px; border-radius: 999px; color: var(--v-text);
+  align-items: center; padding: 4px 4px 4px 12px; border-radius: var(--v-radius); color: var(--v-text);
   font: 500 13px var(--v-font); }
 .void-account__name { margin-right: 6px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.void-account button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
-  border-radius: 50%; border: 0; background: transparent; color: var(--v-muted); cursor: pointer;
+.void-account button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  border-radius: var(--v-radius-in); border: 0; background: transparent; color: var(--v-muted); cursor: pointer;
   transition: background 0.15s, color 0.15s; }
 .void-account button:hover { background: var(--v-hover); color: var(--v-text); }
 .void-account button[aria-pressed="true"] { background: rgb(139 147 255 / 0.22); color: var(--v-text); }
@@ -33,7 +33,7 @@ const STYLES = `
   padding: 6px; border-radius: var(--v-radius); }
 .void-account__menu[hidden] { display: none; }
 .void-account__menu button { display: flex; width: auto; height: auto; gap: 10px; align-items: center; justify-content: flex-start;
-  padding: 8px 10px; border-radius: 10px; color: var(--v-text); font: 500 13px var(--v-font); }
+  padding: 8px 10px; border-radius: var(--v-radius-sm); color: var(--v-text); font: 500 13px var(--v-font); }
 .void-account__menu button[aria-checked="true"] { background: rgb(139 147 255 / 0.22); }
 .void-account button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 1px; }
 `;

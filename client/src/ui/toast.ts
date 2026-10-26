@@ -18,7 +18,7 @@ const STYLES = `
 .void-toast {
   position: fixed; top: 18px; left: 50%; z-index: 1000;
   transform: translate(-50%, -12px); opacity: 0; pointer-events: none;
-  max-width: min(480px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 999px;
+  max-width: min(480px, calc(100vw - 32px)); padding: 7px 12px; border-radius: var(--v-radius-sm);
   font: 500 13px/1.4 var(--v-font); color: var(--v-text);
   background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
   -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur);

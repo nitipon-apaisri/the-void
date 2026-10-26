@@ -3,7 +3,7 @@ import { injectStyle } from "../utils/dom";
 
 const STYLE_ID = "void-theme";
 
-// Dark glass: translucent panels over the world, one soft accent, generous radii.
+// Dark glass: translucent panels over the world, one soft accent, small radii.
 // Every ui module reads these variables, so the look changes in one place.
 const STYLES = `
 :root {
@@ -11,7 +11,7 @@ const STYLES = `
   --v-text: #f4f5fb;
   --v-muted: #a3a8c3;
   --v-bg: #0d0e17;
-  --v-glass: rgb(24 26 42 / 0.72);
+  --v-glass: rgb(24 26 42 / 0.8);
   --v-glass-solid: #181a2a;
   --v-field: rgb(255 255 255 / 0.06);
   --v-hover: rgb(255 255 255 / 0.1);
@@ -21,10 +21,14 @@ const STYLES = `
   --v-on: #5eead4;
   --v-danger: #ff6b81;
   --v-danger-bg: rgb(255 107 129 / 0.16);
+  --v-chip: rgb(13 14 23 / 0.72);
   --v-radius: 16px;
-  --v-radius-sm: 10px;
-  --v-shadow: 0 10px 40px rgb(3 4 12 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.07);
-  --v-blur: blur(18px) saturate(1.4);
+  --v-radius-sm: 8px;
+  --v-radius-xs: 4px;
+  /* A button inside a padded floating bar: the bar's radius minus its padding, so the corners nest. */
+  --v-radius-in: calc(var(--v-radius) - 6px);
+  --v-shadow: 0 4px 16px rgb(3 4 12 / 0.35);
+  --v-blur: blur(12px) saturate(1.2);
 }
 .v-glass { background: var(--v-glass); border: 1px solid var(--v-line); box-shadow: var(--v-shadow);
   -webkit-backdrop-filter: var(--v-blur); backdrop-filter: var(--v-blur); }

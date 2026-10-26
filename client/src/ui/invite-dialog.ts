@@ -32,7 +32,7 @@ const STYLES = `
 .void-invite { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center;
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
 .void-invite__panel { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
-  padding: 24px; border-radius: 22px; display: grid; gap: 18px; }
+  padding: 24px; border-radius: var(--v-radius); display: grid; gap: 18px; }
 .void-invite__head { display: flex; justify-content: space-between; align-items: center; }
 .void-invite h1 { margin: 0; font-size: 20px; font-weight: 650; }
 .void-invite h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--v-muted); }
@@ -44,7 +44,7 @@ const STYLES = `
   border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text); font: inherit; }
 .void-invite select option { background: var(--v-glass-solid); }
 .void-invite input[type="checkbox"] { accent-color: var(--v-accent); width: 16px; height: 16px; }
-.void-invite button { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+.void-invite button { padding: 8px 16px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; font-weight: 500; cursor: pointer; justify-self: start; }
 .void-invite button:hover:not(:disabled) { background: var(--v-hover); }
 .void-invite button.primary { background: var(--v-accent); border-color: var(--v-accent); color: var(--v-accent-ink); font-weight: 650; }

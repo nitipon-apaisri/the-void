@@ -27,13 +27,13 @@ const STYLES = `
   background: rgb(8 9 16 / 0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
 .void-settings__panel { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
-  display: grid; grid-template-rows: auto auto 1fr auto; border-radius: 22px; background: var(--v-glass-solid);
+  display: grid; grid-template-rows: auto auto 1fr auto; border-radius: var(--v-radius); background: var(--v-glass-solid);
   border: 1px solid var(--v-line); box-shadow: var(--v-shadow); overflow: hidden; }
 .void-settings__head { display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 24px 0; }
+  padding: 16px 20px 0; }
 .void-settings h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
 .void-settings [role="tablist"] { display: flex; gap: 6px; padding: 14px 24px 0; }
-.void-settings [role="tab"] { padding: 7px 16px; border: 0; border-radius: 999px;
+.void-settings [role="tab"] { padding: 5px 12px; border: 0; border-radius: var(--v-radius-sm);
   background: none; color: var(--v-muted); cursor: pointer; font: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
 .void-settings [role="tab"]:hover { background: var(--v-hover); color: var(--v-text); }
 .void-settings [role="tab"][aria-selected="true"] { background: rgb(139 147 255 / 0.2); color: var(--v-text); }
@@ -50,7 +50,7 @@ const STYLES = `
 .void-settings input:not([type="range"]):focus, .void-settings select:focus { outline: none; border-color: var(--v-accent); }
 .void-settings input[type="range"] { width: 100%; accent-color: var(--v-accent); }
 .void-settings .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.void-settings button { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--v-line);
+.void-settings button { padding: 8px 16px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line);
   background: var(--v-field); color: var(--v-text); cursor: pointer; font: inherit; font-weight: 500; justify-self: start;
   transition: background 0.15s, filter 0.15s; }
 .void-settings button:hover:not(:disabled) { background: var(--v-hover); }

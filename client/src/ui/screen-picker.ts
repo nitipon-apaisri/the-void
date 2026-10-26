@@ -13,22 +13,22 @@ const STYLES = `
   background: rgb(8 9 16 / 0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
 .void-picker__dialog { width: min(740px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
-  padding: 24px; border-radius: 22px; background: var(--v-glass-solid); border: 1px solid var(--v-line);
+  padding: 24px; border-radius: var(--v-radius); background: var(--v-glass-solid); border: 1px solid var(--v-line);
   box-shadow: var(--v-shadow); display: grid; gap: 16px; }
 .void-picker h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
 .void-picker h3 { margin: 0; font-size: 12px; color: var(--v-muted); font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
 .void-picker__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
-.void-picker__item { display: grid; gap: 8px; padding: 8px; border-radius: 14px; border: 1px solid var(--v-line);
+.void-picker__item { display: grid; gap: 8px; padding: 8px; border-radius: var(--v-radius); border: 1px solid var(--v-line);
   background: var(--v-field); color: inherit; cursor: pointer; font: inherit; text-align: left;
   transition: border-color 0.15s, background 0.15s; }
 .void-picker__item:hover, .void-picker__item:focus-visible { border-color: var(--v-accent); background: var(--v-hover); outline: none; }
-.void-picker__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #000; border-radius: 8px; }
+.void-picker__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #000; border-radius: var(--v-radius-sm); }
 .void-picker__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px 2px; }
 .void-picker__note { margin: 0; padding: 10px 14px; border-radius: var(--v-radius-sm); background: rgb(251 191 36 / 0.14); color: #fde68a; }
 .void-picker__sound { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; cursor: pointer; }
 .void-picker__sound small { grid-column: 2; color: var(--v-muted); }
 .void-picker__actions { display: flex; gap: 8px; justify-content: flex-end; }
-.void-picker button.plain { padding: 8px 18px; border-radius: 999px; border: 1px solid var(--v-line);
+.void-picker button.plain { padding: 8px 18px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line);
   background: var(--v-field); color: var(--v-text); cursor: pointer; font: inherit; font-weight: 500; }
 .void-picker button.plain:hover { background: var(--v-hover); }
 .void-picker button:focus-visible { outline: 2px solid var(--v-accent); outline-offset: 2px; }

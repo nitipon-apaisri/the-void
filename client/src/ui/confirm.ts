@@ -15,11 +15,11 @@ const STYLE_ID = "void-confirm-style";
 const STYLES = `
 .void-confirm { position: fixed; inset: 0; z-index: 2100; display: grid; place-items: center;
   font: 14px/1.4 var(--v-font); color: var(--v-text); }
-.void-confirm__panel { width: min(400px, calc(100vw - 32px)); padding: 24px; border-radius: 22px; display: grid; gap: 14px; }
+.void-confirm__panel { width: min(400px, calc(100vw - 32px)); padding: 24px; border-radius: var(--v-radius); display: grid; gap: 14px; }
 .void-confirm h1 { margin: 0; font-size: 18px; font-weight: 650; }
 .void-confirm p { margin: 0; color: var(--v-muted); }
 .void-confirm__actions { display: flex; justify-content: flex-end; gap: 8px; }
-.void-confirm button { padding: 9px 18px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field);
+.void-confirm button { padding: 9px 18px; border-radius: var(--v-radius-sm); border: 1px solid var(--v-line); background: var(--v-field);
   color: var(--v-text); font: inherit; font-weight: 500; cursor: pointer; }
 .void-confirm button:hover { background: var(--v-hover); }
 .void-confirm button.primary { background: var(--v-accent); border-color: var(--v-accent); color: var(--v-accent-ink); font-weight: 650; }
