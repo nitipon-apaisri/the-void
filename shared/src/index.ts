@@ -172,6 +172,8 @@ export const MESSAGES = {
   // Request/response: owners and admins put a portal to a linked space on the map, or take one away.
   PLACE_PORTAL: "place-portal",
   REMOVE_PORTAL: "remove-portal",
+  // Request/response: close a portal (it stays, but nobody can cross) or open it again.
+  SET_PORTAL_CLOSED: "set-portal-closed",
   // Request/response: ask to cross a portal you stand at. The room answers with the space to join,
   // or rejects with the reason (the link was ended, you are a guest here).
   CROSS: "cross",

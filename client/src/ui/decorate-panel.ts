@@ -14,16 +14,11 @@ export type DecorateTool =
   | { kind: "remove" }
   // Private rooms: two clicks draw one, a click on a drawn one removes it.
   | { kind: "zone" }
-  | { kind: "unzone" }
-  // Cross space: a portal to a linked space, and taking one away.
-  | { kind: "portal"; targetId: string }
-  | { kind: "unportal" };
+  | { kind: "unzone" };
 
 export interface DecoratePanel {
   /** Shows or hides the launcher (hiding closes the panel); `canEmpty` shows the empty-space button. */
-  setAvailable(available: boolean, canEmpty?: boolean, canLink?: boolean): void;
-  /** The linked spaces a portal can lead to. */
-  setPortalTargets(targets: readonly { id: string; name: string }[]): void;
+  setAvailable(available: boolean, canEmpty?: boolean): void;
   close(): void;
   destroy(): void;
 }
@@ -35,8 +30,6 @@ export interface DecorateActions {
   onTool(tool: DecorateTool | undefined): void;
   /** The person confirmed emptying the whole space. */
   onReset(): void;
-  /** The owner wants the window for connecting to other spaces. */
-  onLinks(): void;
 }
 
 const STYLE_ID = "void-decorate-style";
@@ -61,11 +54,6 @@ const STYLES = `
 .void-decor-preview { position: relative; width: 56px; height: 56px; overflow: hidden; }
 .void-decor-preview > div { position: absolute; left: 50%; top: 50%; image-rendering: pixelated; background-repeat: no-repeat; }
 .void-decor-remove { grid-column: 1 / -1; }
-.void-decor-grid select { grid-column: 1 / -1; padding: 6px 8px; border: 1px solid var(--v-line); border-radius: var(--v-radius-sm);
-  background: var(--v-field); color: var(--v-text); font: inherit; font-size: 12px; }
-.void-decor-grid select option { background: var(--v-glass-solid); }
-.void-decor-grid select[hidden] { display: none; }
-.void-decor-grid button:disabled { opacity: 0.6; cursor: default; }
 .void-decor-grid button[hidden] { display: none; }
 .void-art-cards, .void-art-groups { grid-template-columns: repeat(3, 1fr); }
 .void-art-cards { max-height: 300px; overflow-y: auto; }
@@ -117,11 +105,7 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   grid.className = "void-decor-grid void-decor-footer";
   panel.append(grid);
   // A button that switches one non-catalogue tool on or off; only one tool is on at a time.
-  const addTool = (
-    button: HTMLButtonElement,
-    label: string,
-    tool: DecorateTool | (() => DecorateTool),
-  ) => {
+  const addTool = (button: HTMLButtonElement, label: string, tool: DecorateTool) => {
     button.type = "button";
     button.className = "void-decor-remove";
     button.textContent = label;
@@ -131,7 +115,7 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
       picker.clear();
       for (const b of toolButtons) b.setAttribute("aria-pressed", "false");
       button.setAttribute("aria-pressed", String(on));
-      actions.onTool(on ? (typeof tool === "function" ? tool() : tool) : undefined);
+      actions.onTool(on ? tool : undefined);
     });
     grid.append(button);
   };
@@ -142,28 +126,6 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   toolButtons.push(zoneButton, unzoneButton);
   addTool(zoneButton, "Draw a private room", { kind: "zone" });
   addTool(unzoneButton, "Remove a private room", { kind: "unzone" });
-
-  // Cross space. Anyone who may draw rooms may place portals; only the owner manages links.
-  const portalSelect = document.createElement("select");
-  portalSelect.setAttribute("aria-label", "Space the portal leads to");
-  const portalButton = document.createElement("button");
-  const unportalButton = document.createElement("button");
-  toolButtons.push(portalButton, unportalButton);
-  addTool(portalButton, "Place a portal", () => ({ kind: "portal", targetId: portalSelect.value }));
-  addTool(unportalButton, "Remove a portal", { kind: "unportal" });
-  // Picking another space while the tool is on arms it for that space.
-  portalSelect.addEventListener("change", () => {
-    if (portalButton.getAttribute("aria-pressed") === "true") {
-      actions.onTool({ kind: "portal", targetId: portalSelect.value });
-    }
-  });
-  grid.insertBefore(portalSelect, portalButton);
-  const linksButton = document.createElement("button");
-  linksButton.type = "button";
-  linksButton.className = "void-decor-remove";
-  linksButton.textContent = "Connected spaces…";
-  linksButton.addEventListener("click", () => actions.onLinks());
-  grid.append(linksButton);
 
   const reset = document.createElement("button");
   reset.type = "button";
@@ -195,18 +157,8 @@ export function createDecoratePanel(actions: DecorateActions): DecoratePanel {
   document.body.append(launcher, panel);
 
   return {
-    setPortalTargets(targets) {
-      portalSelect.replaceChildren(...targets.map((t) => new Option(t.name, t.id)));
-      portalSelect.hidden = targets.length === 0;
-      portalButton.disabled = targets.length === 0;
-      portalButton.textContent =
-        targets.length === 0 ? "No connected spaces yet" : "Place a portal";
-    },
-    setAvailable(available, canEmpty = false, canLink = false) {
+    setAvailable(available, canEmpty = false) {
       reset.hidden = zoneButton.hidden = unzoneButton.hidden = !canEmpty;
-      portalButton.hidden = unportalButton.hidden = !canEmpty;
-      portalSelect.hidden = !canEmpty || portalSelect.options.length === 0;
-      linksButton.hidden = !canLink;
       launcher.dataset.available = String(available);
       if (!available) setOpen(false);
     },

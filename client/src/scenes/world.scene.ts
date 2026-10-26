@@ -105,11 +105,13 @@ import { chooseScreenSource } from "../ui/screen-picker";
 import { chooseSpace, type MapPreview } from "../ui/space-picker";
 import { openSettings } from "../ui/settings-window";
 import { createRoomBar, type RoomBar } from "../ui/room-bar";
+import { createPortalPanel, type PortalPanel, type PortalTool } from "../ui/portal-panel";
 import { createStage, type Stage } from "../ui/stage";
 import { createDecoratePanel, type DecoratePanel, type DecorateTool } from "../ui/decorate-panel";
 import { createWaveButton, type WaveButton } from "../ui/wave-button";
 import { createTablePrompt, type TablePromptView } from "../ui/table-prompt";
 import { createToast, type Toast } from "../ui/toast";
+import { installTooltips } from "../ui/tooltip";
 import { createZoomControls, type ZoomControls } from "../ui/zoom-controls";
 import { createVisitBar, type VisitBar } from "../ui/visit-bar";
 import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
@@ -201,7 +203,8 @@ export class WorldScene extends Phaser.Scene {
   private tablePromptView?: TablePromptView;
   private lastTablePrompt = 0;
   private decorate?: DecoratePanel;
-  private tool?: DecorateTool;
+  private tool?: DecorateTool | PortalTool;
+  private portalPanel?: PortalPanel;
   // The map's own walls, so placed furniture can be added on top and taken off again.
   private baseBlocked: boolean[] = [];
   private pieces = new Map<string, PlacedFurniture>();
@@ -258,6 +261,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => this.dragMap(pointer));
     this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => this.releaseMap(pointer));
     this.input.on("pointerupoutside", () => this.endPress());
+    installTooltips();
     this.toast = createToast();
     this.voicePanel = createVoicePanel();
     this.voicePanel.setVolume(this.settings.volume);
@@ -306,6 +310,7 @@ export class WorldScene extends Phaser.Scene {
       this.roomBar?.destroy();
       this.stage?.destroy();
       this.decorate?.destroy();
+      this.portalPanel?.destroy();
       this.closeSettings?.();
       void this.stopVoice();
       void this.connection?.leave();
@@ -348,13 +353,29 @@ export class WorldScene extends Phaser.Scene {
     this.decorate = createDecoratePanel({
       onToggle: (open) => {
         if (!open) this.setTool(undefined);
-        else void this.loadPortalTargets();
+        else this.portalPanel?.close();
       },
-      onLinks: () => this.showLinks(),
       onTool: (tool) => this.setTool(tool),
       onReset: () => void this.resetDecorations(),
     });
-    this.input.keyboard!.on("keydown-ESC", () => this.decorate?.close());
+    this.portalPanel = createPortalPanel({
+      onToggle: (open) => {
+        if (!open) this.setTool(undefined);
+        else {
+          this.decorate?.close();
+          void this.loadPortalTargets();
+        }
+      },
+      onTool: (tool) => this.setTool(tool),
+      onSetClosed: (id, closed) =>
+        void this.portalCall(() => this.connection?.setPortalClosed(id, closed)),
+      onRemove: (id) => void this.portalCall(() => this.connection?.removePortal(id)),
+      onLinks: () => this.showLinks(),
+    });
+    this.input.keyboard!.on("keydown-ESC", () => {
+      this.decorate?.close();
+      this.portalPanel?.close();
+    });
     this.minimap = createMinimap(this.grid, (target) => this.walkToPoint(target));
     this.mapControls = createMapControls({
       onZoomIn: () => this.setZoom(stepZoom(this.viewZoom, 1)),
@@ -958,7 +979,7 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  private setTool(tool: DecorateTool | undefined) {
+  private setTool(tool: DecorateTool | PortalTool | undefined) {
     this.tool = tool;
     this.ghost?.destroy();
     this.hoverBox?.destroy();
@@ -976,8 +997,7 @@ export class WorldScene extends Phaser.Scene {
       tool?.kind === "remove" ||
       tool?.kind === "unzone" ||
       tool?.kind === "zone" ||
-      tool?.kind === "portal" ||
-      tool?.kind === "unportal"
+      tool?.kind === "portal"
     ) {
       this.hoverBox = this.add
         .rectangle(0, 0, 0, 0)
@@ -1005,17 +1025,6 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     return undefined;
-  }
-
-  private portalAt(x: number, y: number) {
-    const size = PORTAL_TILES * TILE_SIZE;
-    return [...this.portals.values()].find(
-      (p) =>
-        x >= p.col * TILE_SIZE &&
-        x < p.col * TILE_SIZE + size &&
-        y >= p.row * TILE_SIZE &&
-        y < p.row * TILE_SIZE + size,
-    );
   }
 
   private customZoneAt(x: number, y: number) {
@@ -1077,18 +1086,6 @@ export class WorldScene extends Phaser.Scene {
         .setPosition(spot.col * TILE_SIZE, spot.row * TILE_SIZE)
         .setSize(size, size)
         .setStrokeStyle(2, bad ? 0xff6b81 : 0x5eead4)
-        .setVisible(true);
-    } else if (tool?.kind === "unportal" && this.hoverBox) {
-      const portal = this.portalAt(pointer.worldX, pointer.worldY);
-      if (!portal) {
-        this.hoverBox.setVisible(false);
-        return;
-      }
-      const size = PORTAL_TILES * TILE_SIZE;
-      this.hoverBox
-        .setPosition(portal.col * TILE_SIZE, portal.row * TILE_SIZE)
-        .setSize(size, size)
-        .setStrokeStyle(2, 0xff6b81)
         .setVisible(true);
     } else if (tool?.kind === "unzone" && this.hoverBox) {
       const zone = this.customZoneAt(pointer.worldX, pointer.worldY);
@@ -1157,9 +1154,6 @@ export class WorldScene extends Phaser.Scene {
           return;
         }
         await connection.placePortal({ targetId: tool.targetId, ...spot });
-      } else if (tool.kind === "unportal") {
-        const portal = this.portalAt(pointer.worldX, pointer.worldY);
-        if (portal) await connection.removePortal(portal.id);
       } else {
         const piece = this.pieceAt(pointer.worldX, pointer.worldY);
         if (piece) await connection.removeFurniture(piece.id);
@@ -1442,10 +1436,10 @@ export class WorldScene extends Phaser.Scene {
       connection.onKnockResult((r) => this.knockResult(r.knockerId, r.zoneId, r.result));
       const role = this.space?.role;
       // Guests only look around: they cannot decorate the space they visit.
-      this.decorate?.setAvailable(
-        !this.visit,
-        role ? canEmptySpace(role) : false,
-        role ? canManageLinks(role) : false,
+      this.decorate?.setAvailable(!this.visit, role ? canEmptySpace(role) : false);
+      this.portalPanel?.setAvailable(
+        !this.visit && !!role && canManagePortals(role),
+        !!role && canManageLinks(role),
       );
       void this.startVoice(connection);
       connection.onDrop(() => {
@@ -1625,11 +1619,25 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private async portalCall(run: () => Promise<void> | undefined) {
+    try {
+      await run();
+    } catch (err) {
+      this.toast.show(err instanceof Error ? err.message : "Could not do that", "error", 2500);
+    }
+  }
+
   // Doors to linked spaces. The room keeps them even when the link ends; crossing then says so.
   private syncPortals(list: MapPortal[]) {
     for (const art of this.portalArt) art.destroy();
     this.portalArt = [];
     this.portals = new Map(list.map((p) => [p.id, p]));
+    this.portalPanel?.setPortals(list);
+    // The space just got its portal, so its row left the list: the tool is done.
+    const armed = this.tool;
+    if (armed?.kind === "portal" && list.some((p) => p.targetId === armed.targetId)) {
+      this.setTool(undefined);
+    }
     this.atPortalId = undefined;
     const size = PORTAL_TILES * TILE_SIZE;
     for (const p of list) {
@@ -1637,14 +1645,14 @@ export class WorldScene extends Phaser.Scene {
       const y = p.row * TILE_SIZE;
       this.portalArt.push(
         this.add
-          .rectangle(x, y, size, size, 0x5eead4, 0.22)
+          .rectangle(x, y, size, size, p.closed ? 0x8b8fa8 : 0x5eead4, p.closed ? 0.12 : 0.22)
           .setOrigin(0)
-          .setStrokeStyle(2, 0x5eead4, 0.8)
+          .setStrokeStyle(2, p.closed ? 0x8b8fa8 : 0x5eead4, 0.8)
           .setDepth(1),
         this.add
           .existing(
-            new Chip(this, x + size / 2, y - 4, `➜ ${p.targetName}`, {
-              color: "#c8fff4",
+            new Chip(this, x + size / 2, y - 4, `${p.closed ? "🔒" : "➜"} ${p.targetName}`, {
+              color: p.closed ? "#c3c6d8" : "#c8fff4",
               fontSize: "11px",
               origin: { x: 0.5, y: 1 },
             }),
@@ -1664,6 +1672,10 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.atPortalId === here.id) return;
     this.atPortalId = here.id;
+    if (here.closed) {
+      this.toast.show(`The portal to ${here.targetName} is closed`, "info", 2500);
+      return;
+    }
     if (this.visit) {
       this.toast.show("Visitors cannot cross to another space", "info", 2500);
       return;
@@ -1719,11 +1731,11 @@ export class WorldScene extends Phaser.Scene {
     if (!session || !space || !canManagePortals(space.role)) return;
     try {
       const links = await this.spaces.listLinks(session.token, space.id);
-      this.decorate?.setPortalTargets(
+      this.portalPanel?.setTargets(
         links.filter((l) => l.status === "approved").map((l) => l.space),
       );
     } catch {
-      this.decorate?.setPortalTargets([]);
+      this.portalPanel?.setTargets([]);
     }
   }
 

@@ -46,6 +46,7 @@ export class Portal extends Schema {
   @type("number") row = 0;
   @type("string") targetId = "";
   @type("string") targetName = "";
+  @type("boolean") closed = false;
 }
 
 export class VoidState extends Schema {

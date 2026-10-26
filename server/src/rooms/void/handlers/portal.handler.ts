@@ -1,5 +1,10 @@
 // shared
-import type { CrossPayload, PlacePortalPayload, RemovePortalPayload } from "@void/shared";
+import type {
+  CrossPayload,
+  PlacePortalPayload,
+  RemovePortalPayload,
+  SetPortalClosedPayload,
+} from "@void/shared";
 
 import { isUuid } from "../../../repositories/space.repository.js";
 
@@ -16,6 +21,13 @@ export function parsePlacePortal(payload: unknown): PlacePortalPayload | null {
 export function parseRemovePortal(payload: unknown): RemovePortalPayload | null {
   if (!isObject(payload)) return null;
   return isUuid(payload.id) ? { id: payload.id } : null;
+}
+
+export function parseSetPortalClosed(payload: unknown): SetPortalClosedPayload | null {
+  if (!isObject(payload)) return null;
+  return isUuid(payload.id) && typeof payload.closed === "boolean"
+    ? { id: payload.id, closed: payload.closed }
+    : null;
 }
 
 export function parseCross(payload: unknown): CrossPayload | null {

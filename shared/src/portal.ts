@@ -46,6 +46,8 @@ export interface MapPortal {
   row: number;
   targetId: string;
   targetName: string;
+  /** Still on the map, but nobody can cross through it. */
+  closed: boolean;
 }
 
 export interface PlacePortalPayload {
@@ -56,6 +58,11 @@ export interface PlacePortalPayload {
 
 export interface RemovePortalPayload {
   id: string;
+}
+
+export interface SetPortalClosedPayload {
+  id: string;
+  closed: boolean;
 }
 
 export interface CrossPayload {

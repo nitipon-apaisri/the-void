@@ -64,7 +64,12 @@ import { acceptMove, MoveBudget, parseMove } from "./handlers/move.handler.js";
 import { parseSit, pickStandSpot } from "./handlers/seat.handler.js";
 import { parsePlace, parseRemove } from "./handlers/furniture.handler.js";
 import { checkClaim, parseClaim } from "./handlers/table.handler.js";
-import { parseCross, parsePlacePortal, parseRemovePortal } from "./handlers/portal.handler.js";
+import {
+  parseCross,
+  parsePlacePortal,
+  parseRemovePortal,
+  parseSetPortalClosed,
+} from "./handlers/portal.handler.js";
 import { parseSetStatus } from "./handlers/status.handler.js";
 import { canWave, parseWave } from "./handlers/wave.handler.js";
 import { ZoneAccess } from "./handlers/zone-access.js";
@@ -167,7 +172,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.putZone(z.id, this.toZone(this.fromStored(z), true));
     }
     for (const p of await options.links.listPortals(this.spaceId)) {
-      this.state.portals.set(p.id, this.toPortal(p.col, p.row, p.targetId, p.targetName));
+      this.state.portals.set(p.id, this.toPortal(p.col, p.row, p.targetId, p.targetName, p.closed));
     }
     this.answer(MESSAGES.PLACE_PORTAL, async (client, payload: unknown) => {
       const account = (client as Client<{ auth: Account }>).auth;
@@ -199,7 +204,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       }
       this.state.portals.set(
         id,
-        this.toPortal(request.col, request.row, request.targetId, link.space.name),
+        this.toPortal(request.col, request.row, request.targetId, link.space.name, false),
       );
       return true;
     });
@@ -215,6 +220,19 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       this.state.portals.delete(request.id);
       return true;
     });
+    this.answer(MESSAGES.SET_PORTAL_CLOSED, async (client, payload: unknown) => {
+      const account = (client as Client<{ auth: Account }>).auth;
+      const request = parseSetPortalClosed(payload);
+      if (!account || !request) throw new Error("invalid request");
+      if (account.guest || !canManagePortals(account.role)) {
+        throw new Error("only owners and admins can close portals");
+      }
+      const portal = this.state.portals.get(request.id);
+      if (!portal) throw new Error("that portal is gone");
+      await options.links.setPortalClosed(this.spaceId, request.id, request.closed);
+      portal.closed = request.closed;
+      return true;
+    });
     this.answer(MESSAGES.CROSS, async (client, payload: unknown): Promise<CrossResult> => {
       const account = (client as Client<{ auth: Account }>).auth;
       const player = this.state.players.get(client.sessionId);
@@ -223,6 +241,7 @@ export class VoidRoom extends Room<{ state: VoidState }> {
       if (!account || !player || !request || !portal) throw new Error("that portal is gone");
       // Guests are visiting; they go home through the space picker, not onward.
       if (account.guest) throw new Error("guests cannot cross to another space");
+      if (portal.closed) throw new Error("this portal is closed");
       if (!atPortal(portal, player)) throw new Error("move closer");
       // The link is read live: an owner may have ended it a moment ago.
       if (!(await options.links.isApproved(this.spaceId, portal.targetId))) {
@@ -749,12 +768,19 @@ export class VoidRoom extends Room<{ state: VoidState }> {
     return false;
   }
 
-  private toPortal(col: number, row: number, targetId: string, targetName: string) {
+  private toPortal(
+    col: number,
+    row: number,
+    targetId: string,
+    targetName: string,
+    closed: boolean,
+  ) {
     const portal = new Portal();
     portal.col = col;
     portal.row = row;
     portal.targetId = targetId;
     portal.targetName = targetName;
+    portal.closed = closed;
     return portal;
   }
 

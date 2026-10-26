@@ -19,6 +19,7 @@ import {
   type MapPortal,
   type PlacePortalPayload,
   type RemovePortalPayload,
+  type SetPortalClosedPayload,
   type MapZone,
   type AnswerKnockPayload,
   type KnockPayload,
@@ -86,6 +87,8 @@ export interface VoidConnection {
   /** Owners and admins only. Rejects with the server's reason (a wall, another portal). */
   placePortal(portal: PlacePortalPayload): Promise<void>;
   removePortal(id: string): Promise<void>;
+  /** Close a portal so nobody can cross it, or open it again. */
+  setPortalClosed(id: string, closed: boolean): Promise<void>;
   /** Fires with every portal whenever one is added or removed. */
   onPortals(cb: (portals: MapPortal[]) => void): void;
   /** Ask to cross a portal we stand at. Rejects with the reason (the link was ended, move closer). */
@@ -253,6 +256,12 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
     removePortal: async (id) => {
       await room.request(MESSAGES.REMOVE_PORTAL, { id } satisfies RemovePortalPayload);
     },
+    setPortalClosed: async (id, closed) => {
+      await room.request(MESSAGES.SET_PORTAL_CLOSED, {
+        id,
+        closed,
+      } satisfies SetPortalClosedPayload);
+    },
     onPortals: (cb) => {
       const portals = new Map<string, MapPortal>();
       const emit = () => cb([...portals.values()]);
@@ -264,8 +273,15 @@ export async function connectToVoid(url: string, options: JoinOptions): Promise<
           row: p.row,
           targetId: p.targetId,
           targetName: p.targetName,
+          closed: p.closed,
         });
         emit();
+        $(p).listen("closed", (closed: boolean) => {
+          const entry = portals.get(id);
+          if (!entry || entry.closed === closed) return;
+          portals.set(id, { ...entry, closed });
+          emit();
+        });
       });
       state.onRemove((_: any, id: string) => {
         portals.delete(id);

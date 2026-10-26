@@ -33,6 +33,7 @@ export interface LinkRepository {
     userId: string,
   ): Promise<string>;
   removePortal(spaceId: string, id: string): Promise<boolean>;
+  setPortalClosed(spaceId: string, id: string, closed: boolean): Promise<boolean>;
 }
 
 interface LinkRow {
@@ -138,9 +139,10 @@ export function createLinkRepository(db: Queryable): LinkRepository {
         row: number;
         target_id: string;
         target_name: string;
+        closed: boolean;
         placed_by: string | null;
       }>(
-        `select p.id, p.col, p.row, p.target_id, t.name as target_name, p.placed_by
+        `select p.id, p.col, p.row, p.target_id, t.name as target_name, p.closed, p.placed_by
          from t_space_portals p join t_spaces t on t.id = p.target_id
          where p.space_id = $1 and p.deleted_at is null and t.deleted_at is null
          order by p.created_at`,
@@ -152,6 +154,7 @@ export function createLinkRepository(db: Queryable): LinkRepository {
         row: r.row,
         targetId: r.target_id,
         targetName: r.target_name,
+        closed: r.closed,
         placedBy: r.placed_by,
       }));
     },
@@ -170,6 +173,15 @@ export function createLinkRepository(db: Queryable): LinkRepository {
         `update t_space_portals set deleted_at = now(), updated_at = now()
          where space_id = $1 and id = $2 and deleted_at is null returning id`,
         [spaceId, id],
+      );
+      return rows.length > 0;
+    },
+
+    async setPortalClosed(spaceId, id, closed) {
+      const { rows } = await db.query(
+        `update t_space_portals set closed = $3, updated_at = now()
+         where space_id = $1 and id = $2 and deleted_at is null returning id`,
+        [spaceId, id, closed],
       );
       return rows.length > 0;
     },

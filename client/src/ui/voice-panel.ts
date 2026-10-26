@@ -66,10 +66,16 @@ export function createVoicePanel(): VoicePanel {
   let toggleCamera: (on: boolean) => Promise<void> = async () => {};
   let toggleScreen: (on: boolean) => Promise<void> = async () => {};
 
-  const makeToggle = (label: string, icon: string, run: (on: boolean) => Promise<void>) => {
+  const makeToggle = (
+    label: string,
+    hint: string,
+    icon: string,
+    run: (on: boolean) => Promise<void>,
+  ) => {
     const button = document.createElement("button");
     button.type = "button";
     button.innerHTML = `${icon}<span>${label}</span>`;
+    button.title = hint;
     button.disabled = true;
     button.setAttribute("aria-pressed", "false");
     button.addEventListener("click", async () => {
@@ -94,9 +100,16 @@ export function createVoicePanel(): VoicePanel {
     return button;
   };
 
-  const mic = makeToggle("Mic", ICONS.mic, (on) => toggleMic(on));
-  const camera = makeToggle("Camera", ICONS.camera, (on) => toggleCamera(on));
-  const screen = makeToggle("Share screen", ICONS.screen, (on) => toggleScreen(on));
+  const mic = makeToggle("Mic", "Turn your microphone on or off", ICONS.mic, (on) => toggleMic(on));
+  const camera = makeToggle("Camera", "Turn your camera on or off", ICONS.camera, (on) =>
+    toggleCamera(on),
+  );
+  const screen = makeToggle(
+    "Share screen",
+    "Share your screen with people nearby",
+    ICONS.screen,
+    (on) => toggleScreen(on),
+  );
   controls.append(mic, camera, screen);
   document.body.append(root);
 
