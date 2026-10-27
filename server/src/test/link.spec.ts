@@ -14,7 +14,8 @@ const B = "00000000-0000-4000-8000-00000000000b";
 const OWNER = "00000000-0000-4000-8000-0000000000f1";
 const LINK = "00000000-0000-4000-8000-0000000000c1";
 
-function setup(role: SpaceRole | undefined = "owner") {
+// `null` is a non-member; `undefined` would fall back to the owner default.
+function setup(role: SpaceRole | null = "owner") {
   const state = { codes: new Map<string, string>(), live: [] as { a: string; b: string }[] };
   const links = {
     async setConnectCode(spaceId: string, hash: string) {
@@ -57,7 +58,7 @@ function setup(role: SpaceRole | undefined = "owner") {
 
 describe("link service", () => {
   it("lets only an owner manage links", async () => {
-    for (const role of ["admin", "member", undefined] as const) {
+    for (const role of ["admin", "member", null] as const) {
       const { service } = setup(role);
       await expect(service.connectCode(OWNER, A)).rejects.toBeInstanceOf(AuthError);
       await expect(service.request(OWNER, A, "K7M2P9QXA4")).rejects.toBeInstanceOf(AuthError);

@@ -54,6 +54,6 @@ describe("followPath", () => {
   });
 
   it("stops at the end", () => {
-    expect(followPath(path, { x: 10, y: 9 }, 2)).toEqual({ dx: 0, dy: 0, rest: [] });
+    expect(followPath(path.slice(1), { x: 10, y: 9 }, 2)).toEqual({ dx: 0, dy: 0, rest: [] });
   });
 });

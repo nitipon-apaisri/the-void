@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { effectiveZoom, stepZoom, zoomByWheel } from "../systems/zoom";
+import { ZOOM_MIN, effectiveZoom, stepZoom, zoomByWheel } from "../systems/zoom";
 
 describe("stepZoom", () => {
   it("moves one level at a time", () => {
@@ -11,7 +11,7 @@ describe("stepZoom", () => {
 
   it("stops at the ends", () => {
     expect(stepZoom(3, 1)).toBe(3);
-    expect(stepZoom(1, -1)).toBe(1);
+    expect(stepZoom(ZOOM_MIN, -1)).toBe(ZOOM_MIN);
   });
 
   it("snaps an odd value to the nearest level before stepping", () => {

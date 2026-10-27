@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGrid, findSpawn, PLAYER_RADIUS, PLAYER_SPEED } from "@void/shared";
+import { createGrid, findSpawn, PLAYER_RADIUS, PLAYER_RUN_SPEED } from "@void/shared";
 
 import { resolveSpawn } from "../handlers/join.handler.js";
 import { acceptMove, MoveBudget, parseMove } from "../handlers/move.handler.js";
@@ -76,13 +76,13 @@ describe("acceptMove", () => {
     const budget = new MoveBudget(0);
     let x = 50;
     let refused = 0;
-    // 100 steps of 20px in 100ms: 20000 px/s against a speed of PLAYER_SPEED.
+    // 100 steps of 20px in 100ms: 20000 px/s against the run speed the server allows.
     for (let i = 1; i <= 100; i++) {
       if (acceptMove(grid, budget, at(x, 50), at(x + 20, 50), i)) x += 20;
       else refused++;
     }
     expect(refused).toBeGreaterThan(0);
-    expect(x - 50).toBeLessThan(PLAYER_SPEED * 1.25 * 1.2);
+    expect(x - 50).toBeLessThan(PLAYER_RUN_SPEED * 1.25 * 1.2);
   });
 
   it("lets a delayed packet carrying a longer step through", () => {

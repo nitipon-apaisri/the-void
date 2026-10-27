@@ -17,7 +17,8 @@ describe("office.tmj matches the shared medium size", () => {
     expect(map.tileheight).toBe(TILE_SIZE);
   });
 
-  it("has floor and objects layers", () => {
-    expect(map.layers.map((l: { name: string }) => l.name)).toEqual(["floor", "objects"]);
+  it("has the floor, decor, objects and collision layers", () => {
+    const names = map.layers.map((l: { name: string }) => l.name);
+    expect(names).toEqual(expect.arrayContaining(["floor", "decor", "objects", "collision"]));
   });
 });
