@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="656" height="656" viewBox="184 184 656 656">
+  <defs>
+    <!-- Cuts a gap out of the planet where the front of the ring crosses it. -->
+    <mask id="gap" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <g transform="rotate(-24 512 512)">
+        <path d="M212 512 A300 140 0 0 0 812 512" fill="none" stroke="#000" stroke-width="92" stroke-linecap="round"/>
+      </g>
+    </mask>
+  </defs>
+  <g transform="rotate(-24 512 512)" fill="none" stroke="#000" stroke-width="60" stroke-linecap="round">
+    <path d="M212 512 A300 140 0 0 1 812 512"/>
+    <circle cx="512" cy="512" r="215" fill="#000" stroke="none" mask="url(#gap)"/>
+    <path d="M212 512 A300 140 0 0 0 812 512"/>
+  </g>
+</svg>

@@ -51,12 +51,12 @@ app.whenReady().then(() => {
   };
   let mainWindow: BrowserWindow = makeWindow();
   registerNotifyIpc(CLIENT_ORIGIN, () => mainWindow);
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, "icon.png")
-    : path.join(__dirname, "../build/icon.png");
+  const trayDir = app.isPackaged
+    ? path.join(process.resourcesPath, "tray")
+    : path.join(__dirname, "../build/tray");
   registerTrayIpc(
     CLIENT_ORIGIN,
-    createTray(iconPath, {
+    createTray(trayDir, {
       open,
       quit: () => app.quit(),
       setStatus: (status) => {

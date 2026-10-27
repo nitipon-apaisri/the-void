@@ -14,9 +14,9 @@ files:
 extraResources:
   - from: ../client/dist
     to: client
-  # The tray icon, read at run time (src/windows/tray.ts).
-  - from: build/icon.png
-    to: icon.png
+  # The tray icons, read at run time (src/windows/tray.ts).
+  - from: build/tray
+    to: tray
 
 mac:
   category: public.app-category.business
