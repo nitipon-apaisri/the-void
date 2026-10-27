@@ -1,3 +1,5 @@
+import type { PlayerStatus } from "./status.js";
+
 export const ROOM_NAME = "void";
 export * from "./furniture.js";
 export * from "./art-catalog.js";
@@ -536,6 +538,10 @@ export const DESKTOP_IPC = {
   SELECT_SCREEN: "screen:select",
   OPEN_SCREEN_SETTINGS: "screen:open-settings",
   NOTIFY: "notify:show",
+  /** Page to shell: the status the tray menu should show as chosen. */
+  TRAY_STATUS: "tray:status",
+  /** Shell to page: the person picked a status in the tray menu. */
+  TRAY_COMMAND: "tray:command",
 } as const;
 
 export interface ScreenSource {
@@ -566,4 +572,8 @@ export interface DesktopBridge {
   openScreenSettings(): Promise<void>;
   /** A system notification; clicking it brings the app to the front. */
   notify(title: string, body: string): Promise<NotifyResult>;
+  /** Tells the tray menu which status is current. */
+  setTrayStatus(status: PlayerStatus): Promise<void>;
+  /** Called when the person picks a status in the tray menu; returns a function that stops it. */
+  onTrayStatus(cb: (status: PlayerStatus) => void): () => void;
 }

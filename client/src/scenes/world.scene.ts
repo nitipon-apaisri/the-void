@@ -118,6 +118,7 @@ import { createVoicePanel, type VoicePanel } from "../ui/voice-panel";
 
 // utils
 import { desktopBridge } from "../utils/desktop-bridge";
+import { connectTray, type TrayLink } from "../utils/desktop-tray";
 import { notify } from "../utils/notify";
 import { buildInviteLink, inviteBase, takeInviteFromUrl } from "../utils/invite-link";
 import { tilesetUrls } from "../utils/game-art";
@@ -163,6 +164,7 @@ export class WorldScene extends Phaser.Scene {
   // Set when we came through a portal: we are a guest here and the visit bar takes us home.
   private visit?: Visit;
   private visitBar?: VisitBar;
+  private tray?: TrayLink;
   private closeLinks?: () => void;
   private zoneOf = new Map<string, string>();
   private myZone = "";
@@ -262,6 +264,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => this.releaseMap(pointer));
     this.input.on("pointerupoutside", () => this.endPress());
     installTooltips();
+    this.tray = connectTray((status) => void this.chooseStatus(status));
     this.toast = createToast();
     this.voicePanel = createVoicePanel();
     this.voicePanel.setVolume(this.settings.volume);
@@ -321,6 +324,7 @@ export class WorldScene extends Phaser.Scene {
       this.closeInvite?.();
       this.closeLinks?.();
       this.visitBar?.destroy();
+      this.tray?.dispose();
     });
     void this.enter();
   }
@@ -1812,7 +1816,10 @@ export class WorldScene extends Phaser.Scene {
     else this.statusOf.set(id, status);
     const own = id === this.connection?.sessionId;
     (own ? this.me : this.others.get(id))?.setStatus(status);
-    if (own) this.accountBar?.setStatus(status);
+    if (own) {
+      this.accountBar?.setStatus(status);
+      this.tray?.setStatus(status);
+    }
     this.refreshStatuses();
   }
 
